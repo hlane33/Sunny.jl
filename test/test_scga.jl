@@ -14,7 +14,7 @@
     kT = 15*meV_per_K
     grid = q_space_grid(cryst, [1, 0, 0], 0:0.9:4, [0, 1, 0], 0:0.9:4; orthogonalize=true)
     res = Sunny.intensities_static(scga, grid; kT, SumRule="Classical")
-    abs(sum(reshape(res.data,size(dia))/8 -dia))/length(grid.qs)< tol
+    @test abs(sum(reshape(res.data,size(dia))/8 -dia))/length(grid.qs)< tol
 end
 
 @testitem "square_lattice" begin
@@ -40,6 +40,6 @@ end
     kT = 27.5*meV_per_K
     grid = q_space_grid(cryst, [1, 0, 0], -1:0.12:0, [0, 1, 0], -1:0.12:0; orthogonalize=true)
     res = Sunny.intensities_static(scga, grid; kT, SumRule="Classical")
-    abs(sum(reshape(res.data,size(sq))/2-sq))/length(grid.qs) <tol
+    @test abs(sum(reshape(res.data,size(sq))/2-sq))/length(grid.qs) <tol
 end
 
