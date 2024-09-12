@@ -82,7 +82,8 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical")
     end
     lower = maximum(-eig_vals./((1/(kT))))
     upper = Inf
-    p = [lower+2]
+    δ = 0.2
+    p = [lower+δ]
     result = optimize(loss, lower, upper, p,NelderMead(), Optim.Options(time_limit = 60.0))
     min = Optim.minimizer(result)[1]
     println("Lagrange multiplier: $min")
@@ -123,6 +124,10 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
             intensitybuf[α,β]
         end
         intensity[iq] = measure.combiner(q_global, corrbuf)
+    end
+    if extrema(intensity)[1] < -1e-2
+        @warn "Warning: negative intensities! kT is probably below the ordering temperature."
+        # TODO Throw an error. This is for diagonastic purposes.
     end
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
