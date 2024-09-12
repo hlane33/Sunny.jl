@@ -89,7 +89,7 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical")
     return min
 end
 
-function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Classical")
+function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum")
     kT == 0.0 && error("kT must be non-zero")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
