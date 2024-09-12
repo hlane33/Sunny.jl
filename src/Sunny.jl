@@ -10,7 +10,7 @@ import FFTW
 import DynamicPolynomials as DP
 import Printf: Printf, @printf, @sprintf
 import Random: Random, randn!
-import Optim
+import Optim: Optim, NelderMead, optimize
 import JLD2
 import HCubature: hcubature
 
@@ -98,6 +98,8 @@ include("Spiral/LuttingerTisza.jl")
 include("Spiral/SpiralEnergy.jl")
 include("Spiral/SpinWaveTheorySpiral.jl")
 export minimize_spiral_energy!, spiral_energy, spiral_energy_per_site, SpinWaveTheorySpiral
+
+include("SCGA/SCGA.jl")
 
 include("KPM/Lanczos.jl")
 include("KPM/Chebyshev.jl")
