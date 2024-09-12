@@ -7,12 +7,11 @@ struct SCGA <: AbstractSCGA
 end
 
 function SCGA(sys::System; measure::Union{Nothing, MeasureSpec}, regularization=1e-8)
-
     measure = @something measure empty_measurespec(sys)
     if length(eachsite(sys)) != prod(size(measure.observables)[2:5])
         error("Size mismatch. Check that measure is built using consistent system.")
     end
-    return SCGA(sys, regularization)
+    return SCGA(sys,measure, regularization)
 end
 
 
@@ -169,27 +168,43 @@ function fourier_transform_deprecated(sys::System; k, ϵ=0)
     J_k = hermitianpart(J_k)
     return 2J_k
 end
-#=
-function intensities(scga::SCGA, qpts; formfactors=nothing, kT=0.0)
-    qpts = convert(AbstractQPoints, qpts)
-    data = zeros(eltype(scga.measure), length(qpts.qs))
-    return intensities!(data, scga, qpts; formfactors, kT)
-end
 
-function intensities!(data, scga::SCGA, qpts; formfactors=nothing, kT=0.0)
-    qpts = convert(AbstractQPoints, qpts)
-    (; sys, measure, regularization) = swt
 
+function intensities_instant(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Classical")
+    kT == 0.0 && error("kT must be non-zero")
+    qpts = convert(AbstractQPoints, qpts)
+    (; sys, measure, regularization) = scga
+    Na = natoms(sys.crystal)
+    Nq = length(qpts.qs)
+    λ = find_lagrange_multiplier(sys,kT;SumRule)
+    intensity = zeros(eltype(measure),Nq)
+    pref = zeros(ComplexF64, Na)
+    # Temporary storage for pair correlations
+    Ncorr = length(measure.corr_pairs)
+    corrbuf = zeros(ComplexF64, Ncorr)
+    intensitybuf = zeros(eltype(measure),3,3)
     ff_atoms = propagate_form_factors_to_atoms(formfactors, sys.crystal)
-
     for (iq, q) in enumerate(qpts.qs)
+        corrbuf = zeros(ComplexF64, Ncorr)
+        intensitybuf = zeros(eltype(measure),3,3)
         q_reshaped = to_reshaped_rlu(sys, q)
-        q_global = cryst.recipvecs * q
-
+        q_global = sys.crystal.recipvecs * q
         for i in 1:Na
-            Avec_pref[i] = compute_form_factor(ff_atoms[i], norm2(q_global))
+            pref[i] = Sunny.compute_form_factor(ff_atoms[i], norm2(q_global))
         end
+        J_mat = fourier_transform_interaction_matrix(sys; k=q_reshaped, ϵ=regularization)
+        inverted_matrix = (inv(I(3*Na)*λ[1] + (1/kT)*J_mat)) # this is [(Iλ+J(q))^-1]^αβ_μν
+        for i ∈ 1:Na 
+            for j ∈ 1:Na 
+                # intensity[:,:,iq] += pref[i]*pref[j]'*inverted_matrix[1+3(i-1):3+3(i-1),1+3(j-1):3+3(j-1)] 
+                intensitybuf += pref[i]*conj(pref[j])*inverted_matrix[1+3(i-1):3+3(i-1),1+3(j-1):3+3(j-1)] 
+            end
+        end
+        map!(corrbuf, measure.corr_pairs) do (α, β)
+            intensitybuf[α,β]
+        end
+        intensity[iq] = measure.combiner(q_global, corrbuf)
     end
-    return InstantIntensities(cryst, qpts, data)
+    return StaticIntensities(sys.crystal, qpts, intensity)
 end
-=#
+
