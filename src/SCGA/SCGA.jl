@@ -1,8 +1,26 @@
+abstract type AbstractSCGA end
+
+struct SCGA <: AbstractSCGA
+    sys            :: System
+    measure        :: MeasureSpec
+    regularization :: Float64
+end
+
+function SCGA(sys::System; measure::Union{Nothing, MeasureSpec}, regularization=1e-8)
+
+    measure = @something measure empty_measurespec(sys)
+    if length(eachsite(sys)) != prod(size(measure.observables)[2:5])
+        error("Size mismatch. Check that measure is built using consistent system.")
+    end
+    return SCGA(sys, regularization)
+end
+
+
 function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
     @assert sys.mode in (:dipole, :dipole_large_S) "SU(N) mode not supported"
     @assert sys.latsize == (1, 1, 1) "System must have only a single cell"
 
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     J_k = zeros(ComplexF64, 3, Na, 3, Na)
 
     for i in 1:Na
@@ -11,14 +29,14 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
             isculled && break
 
             (; j, n) = bond
-            J = exp(2π * im * dot(k, n+sys.crystal.positions[j]-sys.crystal.positions[i])) * Sunny.Mat3(bilin*I)
+            J = exp(2π * im * dot(k, n+sys.crystal.positions[j]-sys.crystal.positions[i])) * Mat3(bilin*I)
             J_k[:, i, :, j] += J / 2
             J_k[:, j, :, i] += J' / 2
         end
     end
 
     if !isnothing(sys.ewald)
-        A = Sunny.precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB²
+        A = precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB²
         A = reshape(A, Na, Na)
         for i in 1:Na, j in 1:Na
             J_k[:, i, :, j] += gs[i]' * A[i, j] * gs[j] / 2
@@ -35,7 +53,7 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
     end
 
     J_k = reshape(J_k, 3*Na, 3*Na)
-    @assert Sunny.diffnorm2(J_k, J_k') < 1e-15
+    @assert diffnorm2(J_k, J_k') < 1e-15
     J_k = hermitianpart(J_k)
     return J_k 
 end
@@ -44,7 +62,7 @@ end
 function find_lagrange_multiplier(sys::System,T; ϵ=0, SumRule = "Classical")
     Nq = 8
     dq = 1/Nq;
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     qarray = -0.5: dq : 0.5-dq
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
     Jq_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) for q_in ∈ q] 
@@ -75,9 +93,9 @@ function find_lagrange_multiplier(sys::System,T; ϵ=0, SumRule = "Classical")
 end
 
 function StructureFactorSCGA(sys,T,qs;SumRule = "Classical")
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     kb=0.0861733326
-    λ = Sunny.find_lagrange_multiplier(sys,T;SumRule)
+    λ = find_lagrange_multiplier(sys,T;SumRule)
     Sout = zeros(ComplexF64, 3,3, length(qs))
     for (qi,q) ∈ enumerate(qs)
         J_mat = fourier_transform_interaction_matrix(sys; k=q, ϵ=0)
@@ -102,17 +120,17 @@ end
 function intensities_SCGA(sys,T,qs;form_factor=nothing,SumRule = "Classical")
     S = StructureFactorSCGA(sys,T,qs;SumRule)
     int_out = zeros(Float64,length(qs))
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     if isnothing(form_factor)
         for (qi,q) ∈ enumerate(qs) 
             q_abs = sys.crystal.recipvecs * q
-            int = real(sum(Sunny.orientation_matrix(q_abs).*S[:,:,qi]))/Na
+            int = real(sum(orientation_matrix(q_abs).*S[:,:,qi]))/Na
             int_out[qi] = int
         end
     else
         for (qi,q) ∈ enumerate(qs) 
             q_abs = sys.crystal.recipvecs * q
-            ff = Sunny.compute_form_factor(form_factor, norm(q_abs))
+            ff = compute_form_factor(form_factor, norm(q_abs))
             int = ff*real(sum(orientation_matrix(q_abs).*S[:,:,qi]))
             int_out[qi] = int
         end
@@ -124,7 +142,7 @@ function fourier_transform_deprecated(sys::System; k, ϵ=0)
     @assert sys.mode in (:dipole, :dipole_large_S) "SU(N) mode not supported"
     @assert sys.latsize == (1, 1, 1) "System must have only a single cell"
 
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     J_k = zeros(ComplexF64, 3, Na, 3, Na)
 
     for i in 1:Na
@@ -132,14 +150,14 @@ function fourier_transform_deprecated(sys::System; k, ϵ=0)
             (; isculled, bond, bilin) = coupling
             isculled && break
             (; j, n) = bond
-            J = exp(2π * im * dot(k, n+sys.crystal.positions[j]-sys.crystal.positions[i])) * Sunny.Mat3(bilin*I)
+            J = exp(2π * im * dot(k, n+sys.crystal.positions[j]-sys.crystal.positions[i])) * Mat3(bilin*I)
             J_k[:, i, :, j] += J / 2
             J_k[:, j, :, i] += J' / 2
         end
     end
 
     if !isnothing(sys.ewald)
-        A = Sunny.precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB²
+        A = precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB²
         A = reshape(A, Na, Na)
         for i in 1:Na, j in 1:Na
             J_k[:, i, :, j] += gs[i]' * A[i, j] * gs[j] / 2
@@ -147,7 +165,31 @@ function fourier_transform_deprecated(sys::System; k, ϵ=0)
     end
 
     J_k = reshape(J_k, 3*Na, 3*Na)
-    @assert Sunny.diffnorm2(J_k, J_k') < 1e-15
+    @assert diffnorm2(J_k, J_k') < 1e-15
     J_k = hermitianpart(J_k)
     return 2J_k
 end
+#=
+function intensities(scga::SCGA, qpts; formfactors=nothing, kT=0.0)
+    qpts = convert(AbstractQPoints, qpts)
+    data = zeros(eltype(scga.measure), length(qpts.qs))
+    return intensities!(data, scga, qpts; formfactors, kT)
+end
+
+function intensities!(data, scga::SCGA, qpts; formfactors=nothing, kT=0.0)
+    qpts = convert(AbstractQPoints, qpts)
+    (; sys, measure, regularization) = swt
+
+    ff_atoms = propagate_form_factors_to_atoms(formfactors, sys.crystal)
+
+    for (iq, q) in enumerate(qpts.qs)
+        q_reshaped = to_reshaped_rlu(sys, q)
+        q_global = cryst.recipvecs * q
+
+        for i in 1:Na
+            Avec_pref[i] = compute_form_factor(ff_atoms[i], norm2(q_global))
+        end
+    end
+    return InstantIntensities(cryst, qpts, data)
+end
+=#
