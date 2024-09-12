@@ -99,6 +99,7 @@ include("Spiral/SpinWaveTheorySpiral.jl")
 export minimize_spiral_energy!, spiral_energy, spiral_energy_per_site, SpinWaveTheorySpiral
 
 include("SCGA/SCGA.jl")
+include("SCGA/SUN_SCGA.jl")
 
 include("KPM/Lanczos.jl")
 include("KPM/Chebyshev.jl")
