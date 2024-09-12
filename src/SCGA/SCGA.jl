@@ -100,7 +100,7 @@ function Smn(sys,T,qs)
     Na = Sunny.natoms(sys.crystal)
     kb=0.0861733326
     λ = find_lagrange_multiplier(sys,T)
-    outlist = []
+    Sout = zeros(ComplexF64, 3,3, length(qs))
     for q ∈ qs
         J_mat = fourier_transform_exchange(sys; k=q, ϵ=0)
         inverted_matrix = (inv(I(3*Na)*λ[1] + (1/(kb*T))*J_mat))
@@ -111,9 +111,9 @@ function Smn(sys,T,qs)
                 output_Sab += inverted_matrix[i:i+2,j:j+2] 
             end
         end
-        push!(outlist, output_Sab)
+        Sout[:,:,qi] = output_Sab
     end
-    return outlist
+    return Sout
 end
 
 @inline function polarization_matrix(q)
