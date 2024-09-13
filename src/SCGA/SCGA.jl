@@ -80,7 +80,7 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical")
         sum_term = sum(1 ./ (λ .+ (1/(kT)).*eig_vals ))
         return ((1/(Na*length(q))) * sum_term - S_sq)^2 
     end
-    lower = maximum(-eig_vals./((1/(kT))))
+    lower = -minimum(eig_vals)/kT
     upper = Inf
     δ = 0.2
     p = [lower+δ]
@@ -94,10 +94,10 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
     kT == 0.0 && error("kT must be non-zero")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     Nq = length(qpts.qs)
     Nobs = num_observables(measure)
-    λ = Sunny.find_lagrange_multiplier(sys,kT;SumRule)
+    λ = find_lagrange_multiplier(sys,kT;SumRule)
     intensity = zeros(eltype(measure),Nq)
     Ncorr = length(measure.corr_pairs)
     for (iq, q) in enumerate(qpts.qs)
@@ -127,91 +127,8 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
     end
     if extrema(intensity)[1] < -1e-2
         @warn "Warning: negative intensities! kT is probably below the ordering temperature."
-        # TODO Throw an error. This is for diagonastic purposes.
+        # TODO Throw an error. This is for diagnostic purposes.
     end
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
 
-
-###############################################
-###############################################
-#=
-function fourier_transform_deprecated(sys::System; k, ϵ=0)
-    @assert sys.mode in (:dipole, :dipole_large_S) "SU(N) mode not supported"
-    @assert sys.latsize == (1, 1, 1) "System must have only a single cell"
-
-    Na = natoms(sys.crystal)
-    J_k = zeros(ComplexF64, 3, Na, 3, Na)
-
-    for i in 1:Na
-        for coupling in sys.interactions_union[i].pair
-            (; isculled, bond, bilin) = coupling
-            isculled && break
-            (; j, n) = bond
-            J = exp(2π * im * dot(k, n+sys.crystal.positions[j]-sys.crystal.positions[i])) * Mat3(bilin*I)
-            J_k[:, i, :, j] += J / 2
-            J_k[:, j, :, i] += J' / 2
-        end
-    end
-
-    if !isnothing(sys.ewald)
-        A = precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB²
-        A = reshape(A, Na, Na)
-        for i in 1:Na, j in 1:Na
-            J_k[:, i, :, j] += gs[i]' * A[i, j] * gs[j] / 2
-        end
-    end
-
-    J_k = reshape(J_k, 3*Na, 3*Na)
-    @assert diffnorm2(J_k, J_k') < 1e-15
-    J_k = hermitianpart(J_k)
-    return 2J_k
-end
-
-
-function StructureFactorSCGA_deprecated(sys,T,qs;SumRule = "Classical")
-    Na = natoms(sys.crystal)
-    kb=0.0861733326
-    λ = find_lagrange_multiplier(sys,T;SumRule)
-    Sout = zeros(ComplexF64, 3,3, length(qs))
-    for (qi,q) ∈ enumerate(qs)
-        J_mat = fourier_transform_interaction_matrix(sys; k=q, ϵ=0)
-        inverted_matrix = (inv(I(3*Na)*λ[1] + (1/(kb*T))*J_mat))
-        output_Sab = zeros(ComplexF64, 3,3)
-        index_list = 1:3:3Na 
-        for i ∈ index_list
-            for j ∈ index_list
-                output_Sab += inverted_matrix[i:i+2,j:j+2] 
-            end
-        end
-        Sout[:,:,qi] = output_Sab
-    end
-    return Sout
-end
-
-@inline function orientation_matrix_deprecated(q)
-    q /= norm(q) + 1e-12
-    return (I(3) - q * q')
-end
-
-function intensities_SCGA_deprecated(sys,T,qs;form_factor=nothing,SumRule = "Classical")
-    S = StructureFactorSCGA_deprecated(sys,T,qs;SumRule)
-    int_out = zeros(Float64,length(qs))
-    Na = natoms(sys.crystal)
-    if isnothing(form_factor)
-        for (qi,q) ∈ enumerate(qs) 
-            q_abs = sys.crystal.recipvecs * q
-            int = real(sum(orientation_matrix_deprecated(q_abs).*S[:,:,qi]))/Na
-            int_out[qi] = int
-        end
-    else
-        for (qi,q) ∈ enumerate(qs) 
-            q_abs = sys.crystal.recipvecs * q
-            ff = compute_form_factor(form_factor, norm(q_abs))
-            int = ff*real(sum(orientation_matrix_deprecated(q_abs).*S[:,:,qi]))
-            int_out[qi] = int
-        end
-    end
-    return reshape(int_out,size(qs))
-end
-=#
