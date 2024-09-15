@@ -57,7 +57,7 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
 end
 
 
-function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical")
+function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,g_tol = 1e-10)
     Nq = 8
     dq = 1/Nq;
     Na = natoms(sys.crystal)
@@ -82,15 +82,15 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical")
     end
     lower = -minimum(eig_vals)/kT
     upper = Inf
-    δ = 0.2
-    p = [lower+δ]
-    result = optimize(loss, lower, upper, p,NelderMead(), Optim.Options(time_limit = 60.0))
+    p = [lower+starting_offset] # some offset from the lower bound.
+    options = Optim.Options(; iterations=maxiters, show_trace=false,g_tol)
+    result = optimize(loss, lower, upper, p,NelderMead(), options)
     min = Optim.minimizer(result)[1]
     println("Lagrange multiplier: $min")
     return min
 end
 
-function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum")
+function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,g_tol = 1e-10)
     kT == 0.0 && error("kT must be non-zero")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
