@@ -6,6 +6,15 @@ struct SCGA <: AbstractSCGA
     regularization :: Float64
 end
 
+"""
+    SCGA(sys::System; measure, regularization=1e-8)
+
+Constructs an object to perform the self consistent gaussian approximation. Enables 
+the use of `intensities_static`](@ref) with an SCGA type to calculate the static 
+structure factor in the paramagnetic phase. If the temperature is below the ordering
+temperature, the intensities will be negative.
+"""
+
 function SCGA(sys::System; measure::Union{Nothing, MeasureSpec}, regularization=1e-8)
     measure = @something measure empty_measurespec(sys)
     if length(eachsite(sys)) != prod(size(measure.observables)[2:5])
@@ -47,7 +56,7 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
         anisotropy = [c2[1]-c2[3]   c2[5]   0.5c2[2];
                         c2[5]   -c2[1]-c2[3]  0.5c2[4];
                         0.5c2[2]    0.5c2[4]    2c2[3]]
-        J_k[:, i, :, i] += anisotropy 
+        J_k[:, i, :, i] += 2*anisotropy
     end
 
     J_k = reshape(J_k, 3*Na, 3*Na)
