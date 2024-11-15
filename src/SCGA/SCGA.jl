@@ -66,7 +66,7 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
 end
 
 
-function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,g_tol = 1e-10)
+function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead")
     Nq = 8
     dq = 1/Nq;
     Na = natoms(sys.crystal)
@@ -84,29 +84,55 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
     eig_vals = zeros(3Na,length(Jq_array))
     for j in 1:length(Jq_array)
          eig_vals[:,j] .= eigvals(Jq_array[j])
-     end
-    function loss(λ)
-        sum_term = sum(1 ./ (λ .+ (1/(kT)).*eig_vals ))
-        return ((1/(Na*length(q))) * sum_term - S_sq)^2 
     end
-    lower = -minimum(eig_vals)/kT
-    upper = Inf
-    p = [lower+starting_offset] # some offset from the lower bound.
-    options = Optim.Options(; iterations=maxiters, show_trace=false,g_tol)
-    result = optimize(loss, lower, upper, p,NelderMead(), options)
-    min = Optim.minimizer(result)[1]
+    if method == "Nelder Mead"
+        function loss(λ)
+            sum_term = sum(1 ./ (λ .+ (1/(kT)).*eig_vals ))
+            return ((1/(Na*length(q))) * sum_term - S_sq)^2 
+        end
+        lower = -minimum(eig_vals)/kT
+        upper = Inf
+        p = [lower+starting_offset] # some offset from the lower bound.
+        options = Optim.Options(; iterations=maxiters, show_trace=false,g_tol=tol)
+        result = optimize(loss, lower, upper, p,NelderMead(), options)
+        min = Optim.minimizer(result)[1]
+    elseif method == "Newton's Method" #Newton's method 
+        function f(λ)
+            sum_term = sum(1 ./ (λ .+ (1/(kT)).*eig_vals ))
+            return (1/(Na*length(q))) * sum_term  
+        end
+        function J(λ)
+            sum_term = sum((1 ./ (λ .+ (1/(kT)).*eig_vals )).^2)
+            return -(1/(Na*length(q))) * sum_term  
+        end
+        lower = -minimum(eig_vals)/kT
+        λn = starting_offset*0.1+ lower
+        for n ∈ 1:maxiters
+          λ = λn + (1/J(λn))*(S_sq-f(λn))
+          if abs(λ-λn) < tol 
+              println("Newton's method converged to within tolerance, $tol, after $n steps.")
+              min=λ
+              break
+          else
+          λn = λ
+          end
+        end
+        
+    else
+        throw("Please provide valid method for the λ optimization.")
+    end
     println("Lagrange multiplier: $min")
     return min
 end
 
-function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,g_tol = 1e-10)
+function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7)
     kT == 0.0 && error("kT must be non-zero")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
     Na = natoms(sys.crystal)
     Nq = length(qpts.qs)
     Nobs = num_observables(measure)
-    λ = find_lagrange_multiplier(sys,kT;SumRule)
+    λ = find_lagrange_multiplier(sys,kT;SumRule,method,tol,maxiters,starting_offset)
     intensity = zeros(eltype(measure),Nq)
     Ncorr = length(measure.corr_pairs)
     for (iq, q) in enumerate(qpts.qs)
