@@ -74,9 +74,9 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
     Jq_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) for q_in ∈ q] 
     if SumRule == "Classical"
-        S_sq = sys.κs[1]^2
+        S_sqs = sys.κs.^2
     elseif SumRule == "Quantum"
-        S_sq = sys.κs[1] * (sys.κs[1] + 1)
+        S_sqs = sys.κs .* (sys.κs[1] .+ ones(Float64,Na))
     else
         error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
     end
@@ -85,10 +85,19 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
     for j in 1:length(Jq_array)
          eig_vals[:,j] .= eigvals(Jq_array[j])
     end
+    class_list = sys.crystal.classes
+    unique_sites = unique(class_list)
+    
     if method == "Nelder Mead"
-        function loss(λ)
-            sum_term = sum(1 ./ (λ .+ (1/(kT)).*eig_vals ))
-            return ((1/(Na*length(q))) * sum_term - S_sq)^2 
+        function loss(λs_unique)
+            losses = zeros(Float64,Na)
+            class_assigment = Dict(unique_sites .=> λs_unique)
+            λs = [class_assigment[class] for class in class_list]
+            for (ind,λ) ∈ enumerate(λs)
+                sum_term = sum(1 ./ (λ .+ (1/(kT)).*eig_vals[3ind-2:3ind+3] ))
+                losses[ind] = ((1/(Na*length(q))) * sum_term - S_sqs[ind])^2 
+            end
+            return sum(losses)
         end
         lower = -minimum(eig_vals)/kT
         upper = Inf
