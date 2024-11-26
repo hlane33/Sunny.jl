@@ -69,14 +69,14 @@ end
 function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead")
     Nq = 8
     dq = 1/Nq;
-    Na = natoms(sys.crystal)
+    Na = Sunny.natoms(sys.crystal)
     qarray = -0.5: dq : 0.5-dq
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
-    Jq_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) for q_in ∈ q] 
+    Jq_array = [Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) for q_in ∈ q] 
     if SumRule == "Classical"
         S_sqs = sys.κs.^2
     elseif SumRule == "Quantum"
-        S_sqs = sys.κs .* (sys.κs[1] .+ ones(Float64,Na))
+        S_sqs = sys.κs .* (sys.κs .+ ones(Float64,Na))
     else
         error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
     end
@@ -93,9 +93,14 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
             losses = zeros(Float64,Na)
             class_assigment = Dict(unique_sites .=> λs_unique)
             λs = [class_assigment[class] for class in class_list]
+            λ_mat = diagm(repeat(λs,inner=3))
             for (ind,λ) ∈ enumerate(λs)
-                sum_term = sum(1 ./ (λ .+ (1/(kT)).*eig_vals[3ind-2:3ind+3] ))
-                losses[ind] = ((1/(Na*length(q))) * sum_term - S_sqs[ind])^2 
+                invmat = zeros(3Na,3Na,length(Jq_array))
+                for j in 1:length(Jq_array)
+                    invmat[:,:,j] .= real(inv(λ_mat .+ (1/(kT)).*Jq_array[j]))
+                end
+                sum_term = sum(invmat[3ind-2:3ind,3ind-2:3ind,:])
+                losses[ind] = ((1/(length(q))) * sum_term - S_sqs[ind])^2 
             end
             return sum(losses)
         end
@@ -117,7 +122,7 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
         lower = -minimum(eig_vals)/kT
         λn = starting_offset*0.1+ lower
         for n ∈ 1:maxiters
-          λ = λn + (1/J(λn))*(S_sq-f(λn))
+          λ = λn + (1/J(λn))*(S_sqs[1]-f(λn))
           if abs(λ-λn) < tol 
               println("Newton's method converged to within tolerance, $tol, after $n steps.")
               min=λ
@@ -175,4 +180,3 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
     end
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
-
