@@ -981,7 +981,7 @@ function Sunny.plot_spins!(ax, sys::System; notifier=Makie.Observable(nothing), 
         Makie.arrows!(ax, pts_shifted, vecs; arrowsize, linewidth, linecolor, arrowcolor, diffuse=1.15, transparency=isghost)
 
         # Small sphere inside arrow to mark atom position
-        Makie.meshscatter!(ax, pts; markersize, color=linecolor, diffuse=1.15, transparency=isghost)
+        Makie.meshscatter!(ax, pts; markersize=2, color=arrowcolor, diffuse=1.15, transparency=isghost,shading=Makie.NoShading)
     end
 
     # Bounding box of original crystal unit cell in teal
