@@ -241,3 +241,53 @@ function minimize_spiral_energy!(sys, axis; maxiters=10_000, k_guess=randn(sys.r
         error("Optimization failed to converge within $maxiters iterations.")
     end
 end
+
+
+function minimize_spiral_energy_output!(sys, axis; maxiters=10_000, k_guess=randn(sys.rng, 3))
+    axis = normalize(axis)
+
+    sys.mode in (:dipole, :dipole_uncorrected) || error("SU(N) mode not supported")
+    sys.dims == (1, 1, 1) || error("System must have only a single cell")
+    norm([S × axis for S in sys.dipoles]) > 1e-12 || error("Spins cannot be exactly aligned with polarization axis")
+
+    # Note: if k were fixed, we could check θ = 2πkᵅ for each component α, which
+    # is a weaker constraint.
+    check_rotational_symmetry(sys; axis, θ=0.01)
+
+    L = natoms(sys.crystal)
+
+    params = fill(zero(Vec3), L+1)
+    for i in 1:L
+        params[i] = inverse_stereographic_projection(normalize(sys.dipoles[i]), axis)
+    end
+    params[end] = k_guess
+
+    local λ::Float64
+    f(params) = spiral_f(sys, axis, params, λ)
+    g!(G, params) = spiral_g!(G, sys, axis, params, λ)
+
+    # Minimize f, the energy of a spiral. See comment in `minimize_energy!` for
+    # a discussion of the tolerance settings.
+    options = Optim.Options(; iterations=maxiters, x_tol=1e-12, g_tol=0, f_reltol=NaN, f_abstol=NaN)
+
+    # LBFGS does not converge to high precision, but ConjugateGradient can fail
+    # to converge: https://github.com/JuliaNLSolvers/LineSearches.jl/issues/175.
+    # TODO: Call only ConjugateGradient when issue is fixed.
+    method = Optim.LBFGS(; linesearch=Optim.LineSearches.BackTracking(order=2))
+    λ = 1 * abs(spiral_energy_per_site(sys; k=k_guess, axis)) # regularize at some energy scale
+    res0 = Optim.optimize(f, g!, collect(reinterpret(Float64, params)), method, options)
+    λ = 0 # disable regularization
+    res = Optim.optimize(f, g!, Optim.minimizer(res0), Optim.ConjugateGradient(), options)
+
+    k = unpack_spiral_params!(sys, axis, Optim.minimizer(res))
+
+    if Optim.converged(res)
+        # For aesthetics, wrap k components to [1-ϵ, -ϵ)
+        return wrap_to_unit_cell(k; symprec=1e-6)
+    else
+        println(res)
+        println("Optimization failed to converge within $maxiters iterations.")
+        k = [NaN,NaN,NaN]
+    end
+    return k
+end
