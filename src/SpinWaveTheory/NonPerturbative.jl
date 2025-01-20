@@ -22,6 +22,7 @@ struct RealSpaceCubicVerticesDipole
     V32 :: ComplexF64
 end
 
+# The :tensormode will probably be disregarded in the future. Now if we use @tensor, there might be overhead of allocating new memory. In that case we can use the :loop mode. Otherwise, we can use the :tensor mode.
 struct NonPerturbativeTheory
     swt :: SpinWaveTheory
     clustersize :: NTuple{3, Int}   # Cluster size for number of magnetic unit cell
