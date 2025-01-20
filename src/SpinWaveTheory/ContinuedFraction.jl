@@ -106,23 +106,23 @@ function modified_lanczos_aux!(as, bs, H, f0, niters)
         f_next = zeros(ComplexF64, length(f0))
 
         f_prev = copy(f0)
+        normalize!(f_prev)
         mul!(f_next, H, f_prev)
-        as[1] = real(dot(f_next, f_prev)) / real(dot(f_prev, f_prev))
+        as[1] = real(dot(f_next, f_prev))
         @. f_next = f_next - as[1] * f_prev
 
         for j in 2:niters
             @. f_curr = f_next
             bs[j-1] = real(dot(f_curr, f_curr))
-            # Note that due to round-off error, the norm of the Lanczos vectors may either be larger than the machine maximum or smaller than machine epsilon depending on details (TODO: investigate this in more details). In that case, it means that we are requiring too many Lanczos steps.
-            if abs(bs[j-1]) > floatmax() || abs(bs[j-1]) < eps()
-                @warn "Too many Lanczos iterations. All iterations beyond $j are disregarded."
+            if abs(bs[j-1]) < 1e-12
                 bs[j-1:end] .= 0
                 as[j:end] .= 0
                 break
             else
-                bs[j-1] /= real(dot(f_prev, f_prev))
+                bs[j-1] = √(bs[j-1])
+                normalize!(f_curr)
                 mul!(f_next, H, f_curr)
-                as[j] = real(dot(f_next, f_curr)) / real(dot(f_curr, f_curr))
+                as[j] = real(dot(f_next, f_curr))
                 @. f_next = f_next - as[j] * f_curr - bs[j-1] * f_prev
                 f_prev, f_curr = f_curr, f_prev
             end
@@ -181,7 +181,7 @@ function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64
             z = ω + 1im*η
             G = z - as[niters]
             for j in niters-1:-1:1
-                A = bs[j] / G
+                A = bs[j]^2 / G
                 G = z - as[j] - A
             end
             G = inv(G) * real(dot(f0, f0))
