@@ -168,6 +168,9 @@ function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64
     one_to_two_particle_hamiltonian!(H12ps, npt, q_index)
     @. H21ps = copy(H12ps')
 
+    @assert diffnorm2(H, H') < 1e-12
+    hermitianpart!(H)
+
     # At this moment, we only support the correlation function for the same observable
     as = zeros(niters)
     bs = zeros(niters-1)
