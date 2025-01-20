@@ -220,7 +220,7 @@ function NonPerturbativeTheory(swt::SpinWaveTheory, clustersize::NTuple{3, Int})
         dynamical_matrix!(H_buf, swt, q)
         E = bogoliubov!(V_buf, H_buf)
         Es[:, iq] = E[1:L]
-        Vps[:, :, iq] = deepcopy(V_buf)
+        Vps[:, :, iq] = copy(V_buf)
     end
 
     if sys.mode == :SUN
