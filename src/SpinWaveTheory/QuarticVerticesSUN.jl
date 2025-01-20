@@ -15,10 +15,7 @@ function quartic_U41_SUN!(U41_buf::Array{ComplexF64, 8}, npt::NonPerturbativeThe
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
+    q₁, q₂, q₃, q₄ = qs
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -51,10 +48,7 @@ function quartic_U42_SUN!(U42_buf::Array{ComplexF64, 8}, npt::NonPerturbativeThe
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
+    q₁, q₂, q₃, q₄ = qs
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -87,10 +81,7 @@ function quartic_U43_SUN!(U43_buf::Array{ComplexF64, 8}, npt::NonPerturbativeThe
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
+    q₁, q₂, q₃, q₄ = qs
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -117,24 +108,13 @@ function quartic_U43_SUN!(U43_buf::Array{ComplexF64, 8}, npt::NonPerturbativeThe
     end
 end
 
-function quartic_U4_symmetrized_SUN(quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
-    swt = npt.swt
-    N = swt.sys.Ns[1]
-    nflavors = N - 1
-    L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
-    iq₁ = qs_indices[1]
-    iq₂ = qs_indices[2]
-    iq₃ = qs_indices[3]
-    iq₄ = qs_indices[4]
+function quartic_U4_symmetrized_SUN!(U4::Array{ComplexF64, 8}, U4_buf::Array{ComplexF64, 8}, U4_buf_perm::Array{ComplexF64, 8}, quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
+    U4 .= 0.0
+    U4_buf .= 0.0
+    U4_buf_perm .= 0.0
 
-    U4 = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
-    U4_buf = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
-    # A new buffer to hold the permuted results. According to Julia docs "No in-place permutation is supported and unexpected results will happen if src and dest have overlapping memory regions."
-    U4_buf_perm = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
+    q₁, q₂, q₃, q₄ = qs
+    iq₁, iq₂, iq₃, iq₄ = qs_indices
 
     quartic_fun(U4_buf, npt, bond, qs, qs_indices, φas)
     U4 .+= U4_buf
@@ -150,52 +130,129 @@ function quartic_U4_symmetrized_SUN(quartic_fun::Function, npt::NonPerturbativeT
     quartic_fun(U4_buf, npt, bond, (q₂, q₁, q₄, q₃), (iq₂, iq₁, iq₄, iq₃), φas)
     permutedims!(U4_buf_perm, U4_buf, (1, 2, 3, 4, 6, 5, 8, 7))
     U4 .+= U4_buf_perm
-
-    return U4
 end
 
 function quartic_vertex_SUN(npt::NonPerturbativeTheory, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}})
-    (; swt, real_space_quartic_vertices) = npt
+    (; swt, real_space_quartic_vertices, tensormode) = npt
+    (; sys) = swt
+    N = swt.sys.Ns[1]
+    nflavors = N - 1
     L = nbands(npt.swt)
-    sys = swt.sys
+    
+    U4_tot = zeros(ComplexF64, L, L, L, L)
+    U4_tot_buf = zeros(ComplexF64, L, L, L, L)
+    U4 = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
+    U4_buf = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
+    U4_buf_perm = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
 
-    U4 = zeros(ComplexF64, L, L, L, L)
-    U4_buf = zeros(ComplexF64, L, L, L, L)
+    if tensormode == :loop
+        i = 0
+        for int in sys.interactions_union
+            for coupling in int.pair
+                coupling.isculled && break
+                bond = coupling.bond
+                i += 1
 
-    i = 0
-    for int in sys.interactions_union
-        for coupling in int.pair
-            coupling.isculled && break
-            bond = coupling.bond
-            U4_buf .= 0.0
-            i += 1
+                V41 = real_space_quartic_vertices[i].V41
+                V42 = real_space_quartic_vertices[i].V42
+                V43 = real_space_quartic_vertices[i].V43
 
-            U4_1 = quartic_U4_symmetrized_SUN(quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 1, 0, 1))
-            U4_2 = quartic_U4_symmetrized_SUN(quartic_U42_SUN!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
-            U4_3 = quartic_U4_symmetrized_SUN(quartic_U42_SUN!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
-            U4_4 = quartic_U4_symmetrized_SUN(quartic_U43_SUN!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
-            U4_5 = quartic_U4_symmetrized_SUN(quartic_U43_SUN!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
-            U4_6 = quartic_U4_symmetrized_SUN(quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
-            U4_7 = quartic_U4_symmetrized_SUN(quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
-            U4_8 = quartic_U4_symmetrized_SUN(quartic_U41_SUN!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
-            U4_9 = quartic_U4_symmetrized_SUN(quartic_U41_SUN!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 1, 0, 1))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, σ₄ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += V41[σ₁, σ₂, σ₃, σ₄] * U4[σ₁, σ₃, σ₂, σ₄, n₁, n₂, n₃, n₄]
+                end
 
-            V41 = real_space_quartic_vertices[i].V41
-            V42 = real_space_quartic_vertices[i].V42
-            V43 = real_space_quartic_vertices[i].V43
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U42_SUN!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += V42[σ₁, σ₃] * U4[σ₂, σ₂, σ₃, σ₁, n₁, n₂, n₃, n₄]
+                end
 
-            @tensor begin
-                U4_buf[n₁, n₂, n₃, n₄] = V41[σ₁, σ₂, σ₃, σ₄] * U4_1[σ₁, σ₃, σ₂, σ₄, n₁, n₂, n₃, n₄] +
-                V42[σ₁, σ₃] * (U4_2[σ₂, σ₂, σ₃, σ₁, n₁, n₂, n₃, n₄] + U4_3[σ₂, σ₂, σ₁, σ₃, n₁, n₂, n₃, n₄]) +
-                conj(V42[σ₁, σ₃]) * (U4_4[σ₁, σ₃, σ₂, σ₂, n₁, n₂, n₃, n₄] + U4_5[σ₃, σ₁, σ₂, σ₂, n₁, n₂, n₃, n₄]) +
-                V43[σ₁, σ₃] * (U4_6[σ₁, σ₂, σ₂, σ₃, n₁, n₂, n₃, n₄] + U4_7[σ₁, σ₂, σ₂, σ₃, n₁, n₂, n₃, n₄]) +
-                conj(V43[σ₁, σ₃]) * (U4_8[σ₃, σ₂, σ₂, σ₁, n₁, n₂, n₃, n₄] + U4_9[σ₃, σ₂, σ₂, σ₁, n₁, n₂, n₃, n₄])
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U43_SUN!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += conj(V42[σ₁, σ₃]) * U4[σ₁, σ₃, σ₂, σ₂, n₁, n₂, n₃, n₄]
+                end
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U42_SUN!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += V42[σ₁, σ₃] * U4[σ₂, σ₂, σ₁, σ₃, n₁, n₂, n₃, n₄]
+                end
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U43_SUN!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += conj(V42[σ₁, σ₃]) * U4[σ₃, σ₁, σ₂, σ₂, n₁, n₂, n₃, n₄]
+                end
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += V43[σ₁, σ₃] * U4[σ₁, σ₂, σ₂, σ₃, n₁, n₂, n₃, n₄]
+                end
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += conj(V43[σ₁, σ₃]) * U4[σ₃, σ₂, σ₂, σ₁, n₁, n₂, n₃, n₄]
+                end
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += V43[σ₁, σ₃] * U4[σ₁, σ₂, σ₂, σ₃, n₁, n₂, n₃, n₄]
+                end
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
+                for σ₁ in 1:nflavors, σ₂ in 1:nflavors, σ₃ in 1:nflavors, n₁ in 1:L, n₂ in 1:L, n₃ in 1:L, n₄ in 1:L
+                    U4_tot[n₁, n₂, n₃, n₄] += conj(V43[σ₁, σ₃]) * U4[σ₃, σ₂, σ₂, σ₁, n₁, n₂, n₃, n₄]
+                end
             end
+        end
+    else
+        i = 0
+        for int in sys.interactions_union
+            for coupling in int.pair
+                coupling.isculled && break
+                bond = coupling.bond
+                i += 1
 
-            U4 .+= U4_buf
+                V41 = real_space_quartic_vertices[i].V41
+                V42 = real_space_quartic_vertices[i].V42
+                V43 = real_space_quartic_vertices[i].V43
 
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 1, 0, 1))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = V41[σ₁, σ₂, σ₃, σ₄] * U4[σ₁, σ₃, σ₂, σ₄, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U42_SUN!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = V42[σ₁, σ₃] * U4[σ₂, σ₂, σ₃, σ₁, n₁, n₂, n₃, n₄] 
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U43_SUN!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = conj(V42[σ₁, σ₃]) * U4[σ₁, σ₃, σ₂, σ₂, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U42_SUN!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = V42[σ₁, σ₃] * U4[σ₂, σ₂, σ₁, σ₃, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U43_SUN!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = conj(V42[σ₁, σ₃]) * U4[σ₃, σ₁, σ₂, σ₂, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = V43[σ₁, σ₃] * U4[σ₁, σ₂, σ₂, σ₃, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = conj(V43[σ₁, σ₃]) * U4[σ₃, σ₂, σ₂, σ₁, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = V43[σ₁, σ₃] * U4[σ₁, σ₂, σ₂, σ₃, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+
+                quartic_U4_symmetrized_SUN!(U4, U4_buf, U4_buf_perm, quartic_U41_SUN!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
+                @tensor U4_tot_buf[n₁, n₂, n₃, n₄] = conj(V43[σ₁, σ₃]) * U4[σ₃, σ₂, σ₂, σ₁, n₁, n₂, n₃, n₄]
+                @. U4_tot += U4_tot_buf
+            end
         end
     end
 
-    return U4
+    return U4_tot
 end

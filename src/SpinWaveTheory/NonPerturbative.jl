@@ -30,6 +30,7 @@ struct NonPerturbativeTheory
     Vps :: Array{ComplexF64, 5}
     real_space_quartic_vertices :: Vector{Union{RealSpaceQuarticVerticesSUN, RealSpaceQuarticVerticesDipole}}
     real_space_cubic_vertices   :: Vector{Union{RealSpaceCubicVerticesSUN, RealSpaceCubicVerticesDipole}}
+    tensormode :: Symbol
 end
 
 function calculate_real_space_quartic_vertices_sun(sys::System)
@@ -152,11 +153,12 @@ function calculate_real_space_cubic_vertices_dipole(sys::System)
     return real_space_cubic_vertices
 end
 
-function NonPerturbativeTheory(swt::SpinWaveTheory, clustersize::NTuple{3, Int})
+function NonPerturbativeTheory(swt::SpinWaveTheory, clustersize::NTuple{3, Int}; tensormode::Symbol=:loop)
     (; sys) = swt
     @assert sys.mode in (:SUN, :dipole) "Non-perturbative calculation is only supported in :SUN or :dipole mode."
     Nu1, Nu2, Nu3 = clustersize
     @assert isodd(Nu1) && isodd(Nu2) && isodd(Nu3) "Each linear dimension of the non-perturbative cluster must be odd to guarantee an equal number of two particle states for all `qcom`s."
+    @assert tensormode in (:loop, :tensor) "Only `:loop` and `:tensor` are supported for the `tensormode` argument."
 
     L = nbands(swt)
 
@@ -179,11 +181,12 @@ function NonPerturbativeTheory(swt::SpinWaveTheory, clustersize::NTuple{3, Int})
         real_space_quartic_vertices = calculate_real_space_quartic_vertices_sun(sys)
         real_space_cubic_vertices   = calculate_real_space_cubic_vertices_sun(sys)
     else
+        (tensormode == :tensor) && (@warn "The `tensormode` argument `:tensor` is ignored in the :dipole mode.")
         real_space_quartic_vertices = calculate_real_space_quartic_vertices_dipole(sys)
         real_space_cubic_vertices   = calculate_real_space_cubic_vertices_dipole(sys)
     end
 
-    return NonPerturbativeTheory(swt, clustersize, qs, Es, Vps, real_space_quartic_vertices, real_space_cubic_vertices)
+    return NonPerturbativeTheory(swt, clustersize, qs, Es, Vps, real_space_quartic_vertices, real_space_cubic_vertices, tensormode)
 
 end
 
