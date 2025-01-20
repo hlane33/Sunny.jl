@@ -114,7 +114,7 @@ function modified_lanczos_aux!(as, bs, H, f0, niters)
             @. f_curr = f_next
             bs[j-1] = real(dot(f_curr, f_curr))
             # Note that due to round-off error, the norm of the Lanczos vectors may either be larger than the machine maximum or smaller than machine epsilon depending on details (TODO: investigate this in more details). In that case, it means that we are requiring too many Lanczos steps.
-            if abs(bs[j-1]) > 1e12 || abs(bs[j-1]) < 1e-12
+            if abs(bs[j-1]) > floatmax() || abs(bs[j-1]) < eps()
                 @warn "Too many Lanczos iterations. All iterations beyond $j are disregarded."
                 bs[j-1:end] .= 0
                 as[j:end] .= 0
