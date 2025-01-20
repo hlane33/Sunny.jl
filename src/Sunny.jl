@@ -13,6 +13,7 @@ import Random: Random, randn!
 import Optim
 import JLD2
 import HCubature: hcubature
+import TensorOperations: @tensor
 
 # Specific to Symmetry/
 import CrystalInfoFramework as CIF
@@ -95,6 +96,7 @@ include("SpinWaveTheory/HamiltonianSUN.jl")
 include("SpinWaveTheory/DispersionAndIntensities.jl")
 include("SpinWaveTheory/LSWTCorrections.jl")
 include("SpinWaveTheory/NonPerturbative.jl")
+include("SpinWaveTheory/QuarticVertices.jl")
 export SpinWaveTheory, excitations, excitations!, dispersion, intensities, intensities_bands,
     intensities_static
 
