@@ -2,7 +2,7 @@ module Sunny
 
 using LinearAlgebra
 import Statistics
-import StaticArrays: SVector, SMatrix, SArray, SA
+import StaticArrays: SVector, SMatrix, SArray, SA, setindex
 import OffsetArrays: OffsetArray
 import ElasticArrays: ElasticArray
 import SpecialFunctions: erf, erfc
