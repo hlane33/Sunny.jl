@@ -124,9 +124,9 @@ function calculate_real_space_quartic_vertices_dipole(sys::System)
 
             isculled && break
             J = Mat3(bilin*I)
-            V41 = J[3, 3] / S
-            V42 = 1/(8S) * (-J[1, 1] + J[2, 2] + 1im*J[1, 2] + 1im*J[2, 1])
-            V43 = 1/(8S) * (-J[1, 1] - J[2, 2] - 1im*J[1, 2] + 1im*J[2, 1])
+            V41 = J[3, 3]
+            V42 = 1/8 * (-J[1, 1] + J[2, 2] + 1im*J[1, 2] + 1im*J[2, 1])
+            V43 = 1/8 * (-J[1, 1] - J[2, 2] - 1im*J[1, 2] + 1im*J[2, 1])
             quartic_vertices = RealSpaceQuarticVerticesDipole(V41, V42, V43)
             push!(real_space_quartic_vertices, quartic_vertices)
 
@@ -185,8 +185,8 @@ function calculate_real_space_cubic_vertices_dipole(sys::System)
 
             isculled && break
             J = Mat3(bilin*I)
-            V31 = √(S/2) * (-J[1, 3] + 1im*J[2, 3] ) / S
-            V32 = √(S/2) * (-J[3, 1] + 1im*J[3, 2] ) / S
+            V31 = √(S/2) * (-J[1, 3] + 1im*J[2, 3] )
+            V32 = √(S/2) * (-J[3, 1] + 1im*J[3, 2] )
 
             cubic_vertices = RealSpaceCubicVerticesDipole(V31, V32)
             push!(real_space_cubic_vertices, cubic_vertices)
