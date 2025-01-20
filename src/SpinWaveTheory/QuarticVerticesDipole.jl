@@ -20,6 +20,10 @@ function quartic_U40_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbative
 end
 
 function quartic_U40_symmetrized_dipole!(U4::Array{ComplexF64, 4}, U4_buf::Array{ComplexF64, 4}, U4_buf_perm::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, qs_indices::NTuple{4, CartesianIndex{3}}, α::Int)
+    U4 .= 0.0
+    U4_buf .= 0.0
+    U4_buf_perm .= 0.0
+
     iq₁, iq₂, iq₃, iq₄ = qs_indices
 
     quartic_U40_dipole!(U4_buf, npt, qs_indices, α)
