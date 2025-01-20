@@ -69,8 +69,6 @@ function calculate_real_space_quartic_vertices_sun(sys::System)
 end
 
 function calculate_real_space_quartic_vertices_dipole(sys::System)
-    N = sys.Ns[1]
-    S = (N-1)/2
     real_space_quartic_vertices = RealSpaceQuarticVerticesDipole[]
 
     for int in sys.interactions_union
