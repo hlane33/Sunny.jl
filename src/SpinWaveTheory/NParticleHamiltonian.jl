@@ -119,3 +119,44 @@ function vacuum_to_two_particle_hamiltonian!(H, npt::NonPerturbativeTheory)
     end
 
 end
+
+function truncated_hilbert_space_eigen(npt::NonPerturbativeTheory, q; single_particle_correction::Bool=true, opts...)
+    (; clustersize, swt, qs) = npt
+    Nu1, Nu2, Nu3 = clustersize
+    Nu = Nu1 * Nu2 * Nu3
+
+    # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
+    q_reshaped = to_reshaped_rlu(npt.swt.sys, q)
+    for i in 1:3
+        (abs(q_reshaped[i]) < 1e-12) && (q_reshaped = setindex(q_reshaped, 0.0, i))
+    end
+    # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
+    q_reshaped = mod.(q_reshaped, 1.0)
+    for i in 1:3
+        (abs(q_reshaped[i]) < 1e-12) && (q_reshaped = setindex(q_reshaped, 0.0, i))
+    end
+    q_index = findmin(x -> norm(x - q_reshaped), qs)[2]
+
+    if norm(qs[q_index] - q_reshaped) > 1e-12
+        @warn "The momentum is not in the grid. The closest momentum in the grid is $(qs[q_index])."
+    end
+
+    num_1ps = nbands(swt)
+    # Number of two-particle states is given by the following combinatorial formula:
+    num_2ps = Int(binomial(Nu*num_1ps+2-1, 2) / Nu)
+
+    H = zeros(ComplexF64, num_1ps+num_2ps, num_1ps+num_2ps)
+    H1ps = view(H, 1:num_1ps, 1:num_1ps)
+    H2ps = view(H, num_1ps+1:num_1ps+num_2ps, num_1ps+1:num_1ps+num_2ps)
+    H12ps = view(H, 1:num_1ps, num_1ps+1:num_1ps+num_2ps)
+    H21ps = view(H, num_1ps+1:num_1ps+num_2ps, 1:num_1ps)
+    one_particle_hamiltonian!(H1ps, npt, q_index; single_particle_correction, opts...)
+    two_particle_hamiltonian!(H2ps, npt, q_index)
+    one_to_two_particle_hamiltonian!(H12ps, npt, q_index)
+    @. H21ps = copy(H12ps')
+
+    hermitianpart!(H)
+    E, V = eigen!(H; sortby = x -> -1/real(x))
+
+    return E, V
+end
