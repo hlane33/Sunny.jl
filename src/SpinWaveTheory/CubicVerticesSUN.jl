@@ -111,7 +111,7 @@ function cubic_U32′_SUN!(U32_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTh
     end
 end
 
-function cubic_U3′_symmetrized_SUN!(U3::Array{ComplexF64, 3}, U3_buf::Array{ComplexF64, 3}, U3_buf_perm::Array{ComplexF64, 3}, cubic_fun::Function, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
+function cubic_U3′_symmetrized_SUN!(U3::Array{ComplexF64, 6}, U3_buf::Array{ComplexF64, 6}, U3_buf_perm::Array{ComplexF64, 6}, cubic_fun::Function, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     U3 .= 0.0
     U3_buf .= 0.0
     U3_buf_perm .= 0.0
