@@ -51,15 +51,15 @@ function quartic_U41_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     L = nbands(swt)
     q₁, q₂, q₃, q₄ = view(qs, :)
 
-    αs = [bond.i, bond.j]
+    αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
 
-    phase1 = φ4([q₁, q₂, q₃, q₄], φas, bond.n)
-    phase2 = φ4([q₁, q₃, q₂, q₄], φas, bond.n)
-    phase3 = φ4([q₁, q₄, q₃, q₂], φas, bond.n)
-    phase4 = φ4([q₃, q₂, q₁, q₄], φas, bond.n)
-    phase5 = φ4([q₄, q₂, q₃, q₁], φas, bond.n)
-    phase6 = φ4([q₃, q₄, q₁, q₂], φas, bond.n)
+    phase1 = φ4((q₁, q₂, q₃, q₄), φas, bond.n)
+    phase2 = φ4((q₁, q₃, q₂, q₄), φas, bond.n)
+    phase3 = φ4((q₁, q₄, q₃, q₂), φas, bond.n)
+    phase4 = φ4((q₃, q₂, q₁, q₄), φas, bond.n)
+    phase5 = φ4((q₄, q₂, q₃, q₁), φas, bond.n)
+    phase6 = φ4((q₃, q₄, q₁, q₂), φas, bond.n)
 
     Vp1 = view(Vps, :, :, qs_indices[1])
     Vp2 = view(Vps, :, :, qs_indices[2])
@@ -82,15 +82,15 @@ function quartic_U42_dipole!(U42_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     L = nbands(swt)
     q₁, q₂, q₃, q₄ = view(qs, :)
 
-    αs = [bond.i, bond.j]
+    αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
 
-    phase1 = φ4([q₁, q₂, q₃, q₄], φas, bond.n)
-    phase2 = φ4([q₁, q₃, q₂, q₄], φas, bond.n)
-    phase3 = φ4([q₁, q₄, q₃, q₂], φas, bond.n)
-    phase4 = φ4([q₃, q₂, q₁, q₄], φas, bond.n)
-    phase5 = φ4([q₄, q₂, q₃, q₁], φas, bond.n)
-    phase6 = φ4([q₃, q₄, q₁, q₂], φas, bond.n)
+    phase1 = φ4((q₁, q₂, q₃, q₄), φas, bond.n)
+    phase2 = φ4((q₁, q₃, q₂, q₄), φas, bond.n)
+    phase3 = φ4((q₁, q₄, q₃, q₂), φas, bond.n)
+    phase4 = φ4((q₃, q₂, q₁, q₄), φas, bond.n)
+    phase5 = φ4((q₄, q₂, q₃, q₁), φas, bond.n)
+    phase6 = φ4((q₃, q₄, q₁, q₂), φas, bond.n)
 
     Vp1 = view(Vps, :, :, qs_indices[1])
     Vp2 = view(Vps, :, :, qs_indices[2])
@@ -113,15 +113,15 @@ function quartic_U43_dipole!(U43_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     L = nbands(swt)
     q₁, q₂, q₃, q₄ = view(qs, :)
 
-    αs = [bond.i, bond.j]
+    αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
 
-    phase1 = φ4([q₁, q₂, q₃, q₄], φas, bond.n)
-    phase2 = φ4([q₁, q₃, q₂, q₄], φas, bond.n)
-    phase3 = φ4([q₁, q₄, q₃, q₂], φas, bond.n)
-    phase4 = φ4([q₃, q₂, q₁, q₄], φas, bond.n)
-    phase5 = φ4([q₄, q₂, q₃, q₁], φas, bond.n)
-    phase6 = φ4([q₃, q₄, q₁, q₂], φas, bond.n)
+    phase1 = φ4((q₁, q₂, q₃, q₄), φas, bond.n)
+    phase2 = φ4((q₁, q₃, q₂, q₄), φas, bond.n)
+    phase3 = φ4((q₁, q₄, q₃, q₂), φas, bond.n)
+    phase4 = φ4((q₃, q₂, q₁, q₄), φas, bond.n)
+    phase5 = φ4((q₄, q₂, q₃, q₁), φas, bond.n)
+    phase6 = φ4((q₃, q₄, q₁, q₂), φas, bond.n)
 
     Vp1 = view(Vps, :, :, qs_indices[1])
     Vp2 = view(Vps, :, :, qs_indices[2])
