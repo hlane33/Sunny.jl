@@ -15,7 +15,7 @@ end
 
 function generate_two_particle_basis(cluster_size::NTuple{3, Int}, numbands::Int)
     Nu1, Nu2, Nu3 = cluster_size
-    qs = [[i/Nu1, j/Nu2, k/Nu3] for i in 0:Nu1-1, j in 0:Nu2-1, k in 0:Nu3-1]
+    qs = [Vec3(i/Nu1, j/Nu2, k/Nu3) for i in 0:Nu1-1, j in 0:Nu2-1, k in 0:Nu3-1]
     cartes_indices = CartesianIndices((1:Nu1, 1:Nu2, 1:Nu3, 1:numbands))
     linear_indices = LinearIndices(cartes_indices)
 
@@ -31,11 +31,11 @@ function generate_two_particle_basis(cluster_size::NTuple{3, Int}, numbands::Int
             q1 = qs[q1_carts_index]
             q2 = qs[q2_carts_index]
             qcom = mod.(q1+q2, 1.0)
-            qcom_carts_index = findfirst(x -> x ≈ qcom, qs)
+            qcom_carts_index = CartesianIndex(mod(ci[1]+cj[1]-2, Nu1)+1, mod(ci[2]+cj[2]-2, Nu2)+1, mod(ci[3]+cj[3]-2, Nu3)+1)
 
             tp_counts[qcom_carts_index] += 1
             ζ = i == j ? 1/√2 : 1.0
-            tp_state = TwoParticleState(Vec3(q1), Vec3(q2), Vec3(qcom), q1_carts_index, q2_carts_index, qcom_carts_index, ci[4], cj[4], i, j, tp_counts[qcom_carts_index], ζ)
+            tp_state = TwoParticleState(q1, q2, qcom, q1_carts_index, q2_carts_index, qcom_carts_index, ci[4], cj[4], i, j, tp_counts[qcom_carts_index], ζ)
             push!(tp_states[qcom_carts_index], tp_state)
         end
     end
