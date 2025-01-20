@@ -103,6 +103,8 @@ include("SpinWaveTheory/CubicVerticesSUN.jl")
 include("SpinWaveTheory/CubicVerticesDipole.jl")
 include("SpinWaveTheory/TwoParticleHamiltonian.jl")
 include("SpinWaveTheory/NParticleHamiltonian.jl")
+include("SpinWaveTheory/QuadraticVerticesSUN.jl")
+include("SpinWaveTheory/QuadraticVerticesDipole.jl")
 export SpinWaveTheory, excitations, excitations!, dispersion, intensities, intensities_bands,
     intensities_static
 
