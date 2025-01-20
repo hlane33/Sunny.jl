@@ -166,7 +166,7 @@ function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64
     one_particle_hamiltonian!(H1ps, npt, q_index; single_particle_correction, opts...)
     two_particle_hamiltonian!(H2ps, npt, q_index)
     one_to_two_particle_hamiltonian!(H12ps, npt, q_index)
-    @. H21ps = H12ps'
+    @. H21ps = copy(H12ps')
 
     # At this moment, we only support the correlation function for the same observable
     as = zeros(niters)
