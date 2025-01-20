@@ -38,22 +38,22 @@ function swt_hamiltonian_dipole_nlsw!(H::Matrix{ComplexF64}, ptt::PerturbativeTh
             # Bilinear exchange
             if !iszero(coupling.bilin)
 
-                Q = 0.5 * ( V41 * conj(Nij) + V42 * Δii + conj(V42) * conj(Δjj) + 2 * conj(V43) * (Nii + Njj) )
+                Q = V41 * conj(Nij) + V42 * Δii + conj(V42) * conj(Δjj) + 2 * conj(V43) * (Nii + Njj)
 
                 H11[i, j] += Q * phase
                 H11[j, i] += conj(Q) * conj(phase)
                 H22[i, j] += conj(Q) * phase
                 H22[j, i] += Q  * conj(phase)
 
-                P = 0.5 * ( V41 * conj(Δij) + 2 * V42 * (Nii + Njj) + V43 * conj(Δjj) + conj(V43) * conj(Δii) )
+                P = V41 * conj(Δij) + 2 * V42 * (Nii + Njj) + V43 * conj(Δjj) + conj(V43) * conj(Δii)
 
                 H21[i, j] += P * phase
                 H21[j, i] += P * conj(phase)
                 H12[i, j] += conj(P) * phase
                 H12[j, i] += conj(P) * conj(phase)
 
-                Qi = 0.5 * ( V41 * Njj + 2 * V42 * Δij + 2 * conj(V42) * conj(Δij) + 2 * V43 * conj(Nij) + 2 * conj(V43) * Nij )
-                Qj = 0.5 * ( V41 * Nii + 2 * V42 * Δij + 2 * conj(V42) * conj(Δij) + 2 * V43 * conj(Nij) + 2 * conj(V43) * Nij )
+                Qi = V41 * Njj + 2 * V42 * Δij + 2 * conj(V42) * conj(Δij) + 2 * V43 * conj(Nij) + 2 * conj(V43) * Nij
+                Qj = V41 * Nii + 2 * V42 * Δij + 2 * conj(V42) * conj(Δij) + 2 * V43 * conj(Nij) + 2 * conj(V43) * Nij
                 H11[i, i] += Qi
                 H11[j, j] += Qj
                 H22[i, i] += Qi
