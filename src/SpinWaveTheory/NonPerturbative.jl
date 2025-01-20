@@ -58,7 +58,7 @@ function calculate_real_space_quartic_vertices_sun(sys::System)
                 end
             end
 
-            quartic_vertices = RealSpaceQuarticVerticesSUN(V41_buf, V42_buf, V43_buf)
+            quartic_vertices = RealSpaceQuarticVerticesSUN(copy(V41_buf), copy(V42_buf), copy(V43_buf))
             push!(real_space_quartic_vertices, quartic_vertices)
         end
     end
@@ -119,7 +119,7 @@ function calculate_real_space_cubic_vertices_sun(sys::System)
                 end
             end
 
-            cubic_vertices = RealSpaceCubicVerticesSUN(V31_p_buf, V31_m_buf, V32_p_buf, V32_m_buf)
+            cubic_vertices = RealSpaceCubicVerticesSUN(copy(V31_p_buf), copy(V31_m_buf), copy(V32_p_buf), copy(V32_m_buf))
             push!(real_space_cubic_vertices, cubic_vertices)
         end
     end
