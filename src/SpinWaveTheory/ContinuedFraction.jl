@@ -1,11 +1,11 @@
 function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_carts_index::CartesianIndex{3})
     (; swt, two_particle_states, clustersize) = npt
-    (; sys, data, observables) = swt
-    (; observable_operators) = data
+    (; sys, data) = swt
+    (; observables_localized) = data
     cryst = orig_crystal(sys)
     q_global = cryst.recipvecs * q
 
-    num_obs = num_observables(observables)
+    num_obs = num_observables(npt.swt.measure)
 
     Nm = length(sys.dipoles)
     N  = sys.Ns[1]
@@ -32,7 +32,7 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_c
             vq = reshape(view(Vq, :, band), N-1, Nm, 2)
             for i in 1:Nm
                 for μ in 1:num_obs
-                    @views O = observable_operators[:, :, μ, i]
+                    O = observables_localized[μ, i]
                     for α in 1:N-1
                         f0s[band, μ] += Avec_pref[i] * (O[α, N] * conj(vq[α, i, 1]) + O[N, α] * conj(vq[α, i, 2]))
                     end
@@ -52,7 +52,7 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_c
 
             for i in 1:Nm
                 for μ in 1:num_obs
-                    @views O = observable_operators[:, :, μ, i]
+                    O = observables_localized[μ, i]
                     for α in 1:N-1
                         for β in 1:N-1
                             f0s[is, μ] += Avec_pref[i] * (O[α, β] - O[N, N] * δ(α, β)) * (conj(vq1[α, i, 1]) * conj(vq2[β, i, 2]) + conj(vq1[β, i, 2]) * conj(vq2[α, i, 1])) / (√Nu * state.ζ)
@@ -71,8 +71,8 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_c
             for i in 1:Nm
                 for μ in 1:num_obs
                     displacement_local_frame = conj([vq[i, 2] + vq[i, 1], im * (vq[i, 2] - vq[i, 1]), 0.0])
-                    @views O_local_frame = observable_operators[:, :, μ, i]
-                    f0s[band, μ] += Avec_pref[i] * sqrt_halfS * (O_local_frame * displacement_local_frame)[1]
+                    O_local_frame = observables_localized[μ, i]
+                    f0s[band, μ] += Avec_pref[i] * sqrt_halfS * (O_local_frame' * displacement_local_frame)
                 end
             end
         end
@@ -88,8 +88,8 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_c
 
             for i in 1:Nm
                 for μ in 1:num_obs
-                    @views O = observable_operators[:, :, μ, i]
-                    f0s[is, μ] += Avec_pref[i] * O[1, 3] * (conj(vq1[i, 2])*conj(vq2[i, 1]) + conj(vq1[i, 1])*conj(vq2[i, 2]) )  / (√Nu * state.ζ)
+                    O = observables_localized[μ, i]
+                    f0s[is, μ] += Avec_pref[i] * O[3] * (conj(vq1[i, 2])*conj(vq2[i, 1]) + conj(vq1[i, 1])*conj(vq2[i, 2]) )  / (√Nu * state.ζ)
                 end
             end
 
