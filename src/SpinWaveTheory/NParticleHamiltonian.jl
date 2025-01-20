@@ -87,3 +87,35 @@ function one_to_two_particle_hamiltonian!(H, npt::NonPerturbativeTheory, q_index
         end
     end
 end
+
+function vacuum_to_two_particle_hamiltonian!(H, npt::NonPerturbativeTheory)
+    H .= 0.0
+
+    (; swt, clustersize, qs) = npt
+    Nu1, Nu2, Nu3 = clustersize
+    Nu = Nu1 * Nu2 * Nu3
+    L = nbands(swt)
+
+    # Two-particle states with center-of-mass momentum equal to (0, 0, 0)
+    dict_states = generate_two_particle_states(clustersize, L, CartesianIndex((1, 1, 1)))
+
+    vacuum_vertex_fun = swt.sys.mode == :SUN ? vacuum_V4_SUN : vacuum_V4_dipole
+
+    V4 = zeros(ComplexF64, L, L)
+
+    for kp_index in CartesianIndices(qs)
+        kp = qs[kp_index]
+        km = mod.(-kp, 1.0)
+        km_index = CartesianIndex(mod(1-kp_index[1], Nu1)+1, mod(1-kp_index[2], Nu2)+1, mod(1-kp_index[3], Nu3)+1)
+
+        V4 .= vacuum_vertex_fun(npt, (kp, km), (kp_index, km_index))
+
+        for band1 in 1:L, band2 in 1:L
+            if haskey(dict_states, (kp_index, km_index, band1, band2))
+                (com, ζjk, _, _) = dict_states[(kp_index, km_index, band1, band2)]
+                H[com] += V4[band1, band2] * ζjk / Nu
+            end
+        end
+    end
+
+end

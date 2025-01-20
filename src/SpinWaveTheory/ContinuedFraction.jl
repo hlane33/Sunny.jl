@@ -1,3 +1,26 @@
+# Diagonalize the many-body Hamiltonian at zero center-of-mass momentum. Returns to the renormalized vacuum state.
+function calculate_renormalized_vacuum(npt::NonPerturbativeTheory; single_particle_correction::Bool=false)
+    (; swt, clustersize) = npt
+    Nu = prod(clustersize)
+    num_1ps = nbands(swt)
+    num_2ps = Int(binomial(Nu*num_1ps+2-1, 2) / Nu)
+
+    H = zeros(ComplexF64, num_1ps+num_2ps+1, num_1ps+num_2ps+1)
+    H1ps = view(H, 2:num_1ps+1, 2:num_1ps+1)
+    H2ps = view(H, num_1ps+2:num_1ps+num_2ps+1, num_1ps+2:num_1ps+num_2ps+1)
+    H02ps = view(H, 1, num_1ps+2:num_1ps+num_2ps+1)
+    H20ps = view(H, num_1ps+2:num_1ps+num_2ps+1, 1)
+
+    one_particle_hamiltonian!(H1ps, npt, CartesianIndex((1,1,1)); single_particle_correction=single_particle_correction)
+    two_particle_hamiltonian!(H2ps, npt, CartesianIndex((1,1,1)))
+    vacuum_to_two_particle_hamiltonian!(H02ps, npt)
+    @. H20ps = conj(H02ps)
+
+    hermitianpart!(H)
+    _, V = eigen(H; sortby=identity)
+    return V[:, 1]
+end
+
 function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_index::CartesianIndex{3})
     (; swt, clustersize) = npt
     (; sys, data) = swt

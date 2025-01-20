@@ -1,4 +1,4 @@
-function φ4(qs::NTuple{4, Vec3}, φas::NTuple{4, Int}, n)
+function φ4(qs, φas::NTuple{4, Int}, n)
     ret = 1.0 + 0.0im
     for i in 1:4
         ret *= exp(2π*im * φas[i] * dot(qs[i], n))
