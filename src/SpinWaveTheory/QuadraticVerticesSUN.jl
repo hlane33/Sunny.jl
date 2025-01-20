@@ -24,18 +24,18 @@ function quadratic_Q41_SUN(npt::NonPerturbativeTheory, bond::Bond, q::Vec3, q_in
            i = linear_indices[cart] 
            σ₁, σ₂, σ₃, σ₄, n₁, n₂ = cart[1], cart[2], cart[3], cart[4], cart[5], cart[6]
            for m in 1:L
-               f[i] += conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([-q, k, -k, q], φas, bond.n) +
-               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([-q, q, k, -k], φas, bond.n) +
-               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([-q, k, q, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([k, -k, -q, q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([k, -q, -k, q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([k, -k, q, -q], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([q, -q, k, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([k, -q, q, -k], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([q, k, -k, -q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([k, q, -k, -q], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([q, k, -q, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([k, q, -q, -k], φas, bond.n)
+               f[i] += conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((-q, k, -k, q), φas, bond.n) +
+               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((-q, q, k, -k), φas, bond.n) +
+               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((-q, k, q, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((k, -k, -q, q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((k, -q, -k, q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((k, -k, q, -q), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((q, -q, k, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((k, -q, q, -k), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((q, k, -k, -q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((k, q, -k, -q), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((q, k, -q, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((k, q, -q, -k), φas, bond.n)
            end
         end
 
@@ -71,18 +71,18 @@ function quadratic_Q42_SUN(npt::NonPerturbativeTheory, bond::Bond, q::Vec3, q_in
            i = linear_indices[cart] 
            σ₁, σ₂, σ₃, σ₄, n₁, n₂ = cart[1], cart[2], cart[3], cart[4], cart[5], cart[6]
            for m in 1:L
-               f[i] += conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([-q, k, -k, q], φas, bond.n) +
-               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vq[(α₂-1)*nflavors+σ₂, n₂] * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([-q, q, k, -k], φas, bond.n) +
-               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂, m] * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([-q, k, q, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂+L, m]) * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([k, -k, -q, q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂+L, n₁]) * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([k, -q, -k, q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂+L, m]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([k, -k, q, -q], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * conj(Vq[(α₂-1)*nflavors+σ₂+L, n₁]) * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([q, -q, k, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂+L, n₁]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([k, -q, q, -k], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([q, k, -k, -q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂, n₂] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([k, q, -k, -q], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂, m] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([q, k, -q, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂, n₂] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([k, q, -q, -k], φas, bond.n)
+               f[i] += conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((-q, k, -k, q), φas, bond.n) +
+               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vq[(α₂-1)*nflavors+σ₂, n₂] * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((-q, q, k, -k), φas, bond.n) +
+               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂, m] * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((-q, k, q, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂+L, m]) * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((k, -k, -q, q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂+L, n₁]) * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((k, -q, -k, q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂+L, m]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((k, -k, q, -q), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * conj(Vq[(α₂-1)*nflavors+σ₂+L, n₁]) * Vk[(α₃-1)*nflavors+σ₃, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((q, -q, k, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂+L, n₁]) * Vq[(α₃-1)*nflavors+σ₃, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((k, -q, q, -k), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂, m] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((q, k, -k, -q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂, n₂] * conj(Vk[(α₃-1)*nflavors+σ₃+L, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((k, q, -k, -q), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂, m] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((q, k, -q, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂, n₂] * conj(Vq[(α₃-1)*nflavors+σ₃+L, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((k, q, -q, -k), φas, bond.n)
            end
         end
 
@@ -119,18 +119,18 @@ function quadratic_Q43_SUN(npt::NonPerturbativeTheory, bond::Bond, q::Vec3, q_in
            i = linear_indices[cart] 
            σ₁, σ₂, σ₃, σ₄, n₁, n₂ = cart[1], cart[2], cart[3], cart[4], cart[5], cart[6]
            for m in 1:L
-               f[i] += conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([-q, k, -k, q], φas, bond.n) +
-               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * Vk[(α₃-1)*nflavors+σ₃+L, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([-q, q, k, -k], φas, bond.n) +
-               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * Vq[(α₃-1)*nflavors+σ₃+L, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([-q, k, q, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * conj(Vq[(α₃-1)*nflavors+σ₃, n₁]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([k, -k, -q, q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4([k, -q, -k, q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * Vq[(α₃-1)*nflavors+σ₃+L, n₂] * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([k, -k, q, -q], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vk[(α₃-1)*nflavors+σ₃+L, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([q, -q, k, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vq[(α₃-1)*nflavors+σ₃+L, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([k, -q, q, -k], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([q, k, -k, -q], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4([k, q, -k, -q], φas, bond.n) +
-               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vq[(α₃-1)*nflavors+σ₃, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([q, k, -q, -k], φas, bond.n) +
-               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vq[(α₃-1)*nflavors+σ₃, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4([k, q, -q, -k], φas, bond.n)
+               f[i] += conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((-q, k, -k, q), φas, bond.n) +
+               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * Vk[(α₃-1)*nflavors+σ₃+L, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((-q, q, k, -k), φas, bond.n) +
+               conj(Vq[(α₁-1)*nflavors+σ₁, n₁]) * Vk[(α₂-1)*nflavors+σ₂+L, m] * Vq[(α₃-1)*nflavors+σ₃+L, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((-q, k, q, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * conj(Vq[(α₃-1)*nflavors+σ₃, n₁]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((k, -k, -q, q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * Vq[(α₄-1)*nflavors+σ₄, n₂] * φ4((k, -q, -k, q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vk[(α₂-1)*nflavors+σ₂, m]) * Vq[(α₃-1)*nflavors+σ₃+L, n₂] * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((k, -k, q, -q), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vk[(α₃-1)*nflavors+σ₃+L, m] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((q, -q, k, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * conj(Vq[(α₂-1)*nflavors+σ₂, n₁]) * Vq[(α₃-1)*nflavors+σ₃+L, n₂] * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((k, -q, q, -k), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((q, k, -k, -q), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vk[(α₃-1)*nflavors+σ₃, m]) * conj(Vq[(α₄-1)*nflavors+σ₄+L, n₁]) * φ4((k, q, -k, -q), φas, bond.n) +
+               Vq[(α₁-1)*nflavors+σ₁+L, n₂] * Vk[(α₂-1)*nflavors+σ₂+L, m] * conj(Vq[(α₃-1)*nflavors+σ₃, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((q, k, -q, -k), φas, bond.n) +
+               Vk[(α₁-1)*nflavors+σ₁+L, m] * Vq[(α₂-1)*nflavors+σ₂+L, n₂] * conj(Vq[(α₃-1)*nflavors+σ₃, n₁]) * conj(Vk[(α₄-1)*nflavors+σ₄+L, m]) * φ4((k, q, -q, -k), φas, bond.n)
            end
         end
 

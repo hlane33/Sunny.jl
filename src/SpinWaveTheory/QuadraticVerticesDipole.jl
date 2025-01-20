@@ -20,18 +20,18 @@ function quadratic_Q41_dipole(npt::NonPerturbativeTheory, bond::Bond, q::Vec3, q
            i = linear_indices[cart] 
            n₁, n₂ = cart[1], cart[2]
            for m in 1:L
-               f[i] += conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4([-q, k, -k, q], φas, bond.n) +
-               conj(Vq[α₁, n₁]) * Vq[α₂+L, n₂] * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4([-q, q, k, -k], φas, bond.n) +
-               conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4([-q, k, q, -k], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vk[α₂, m]) * conj(Vq[α₃+L, n₁]) * Vq[α₄, n₂] * φ4([k, -k, -q, q], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4([k, -q, -k, q], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vk[α₂, m]) * Vq[α₃, n₂] * conj(Vq[α₄+L, n₁]) * φ4([k, -k, q, -q], φas, bond.n) +
-               Vq[α₁+L, n₂] * conj(Vq[α₂, n₁]) * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4([q, -q, k, -k], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4([k, -q, q, -k], φas, bond.n) +
-               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4([q, k, -k, -q], φas, bond.n) +
-               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4([k, q, -k, -q], φas, bond.n) +
-               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4([q, k, -q, -k], φas, bond.n) +
-               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4([k, q, -q, -k], φas, bond.n)
+               f[i] += conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4((-q, k, -k, q), φas, bond.n) +
+               conj(Vq[α₁, n₁]) * Vq[α₂+L, n₂] * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4((-q, q, k, -k), φas, bond.n) +
+               conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4((-q, k, q, -k), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vk[α₂, m]) * conj(Vq[α₃+L, n₁]) * Vq[α₄, n₂] * φ4((k, -k, -q, q), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4((k, -q, -k, q), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vk[α₂, m]) * Vq[α₃, n₂] * conj(Vq[α₄+L, n₁]) * φ4((k, -k, q, -q), φas, bond.n) +
+               Vq[α₁+L, n₂] * conj(Vq[α₂, n₁]) * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4((q, -q, k, -k), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4((k, -q, q, -k), φas, bond.n) +
+               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4((q, k, -k, -q), φas, bond.n) +
+               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4((k, q, -k, -q), φas, bond.n) +
+               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4((q, k, -q, -k), φas, bond.n) +
+               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4((k, q, -q, -k), φas, bond.n)
            end
         end
 
@@ -65,18 +65,18 @@ function quadratic_Q42_dipole(npt::NonPerturbativeTheory, bond::Bond, q::Vec3, q
            i = linear_indices[cart] 
            n₁, n₂ = cart[1], cart[2]
            for m in 1:L
-               f[i] += conj(Vq[α₁, n₁]) * Vk[α₂, m] * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4([-q, k, -k, q], φas, bond.n) +
-               conj(Vq[α₁, n₁]) * Vq[α₂, n₂] * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4([-q, q, k, -k], φas, bond.n) +
-               conj(Vq[α₁, n₁]) * Vk[α₂, m] * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4([-q, k, q, -k], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vk[α₂+L, m]) * conj(Vq[α₃+L, n₁]) * Vq[α₄, n₂] * φ4([k, -k, -q, q], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vq[α₂+L, n₁]) * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4([k, -q, -k, q], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vk[α₂+L, m]) * Vq[α₃, n₂] * conj(Vq[α₄+L, n₁]) * φ4([k, -k, q, -q], φas, bond.n) +
-               Vq[α₁+L, n₂] * conj(Vq[α₂+L, n₁]) * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4([q, -q, k, -k], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vq[α₂+L, n₁]) * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4([k, -q, q, -k], φas, bond.n) +
-               Vq[α₁+L, n₂] * Vk[α₂, m] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4([q, k, -k, -q], φas, bond.n) +
-               Vk[α₁+L, m] * Vq[α₂, n₂] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4([k, q, -k, -q], φas, bond.n) +
-               Vq[α₁+L, n₂] * Vk[α₂, m] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4([q, k, -q, -k], φas, bond.n) +
-               Vk[α₁+L, m] * Vq[α₂, n₂] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4([k, q, -q, -k], φas, bond.n)
+               f[i] += conj(Vq[α₁, n₁]) * Vk[α₂, m] * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4((-q, k, -k, q), φas, bond.n) +
+               conj(Vq[α₁, n₁]) * Vq[α₂, n₂] * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4((-q, q, k, -k), φas, bond.n) +
+               conj(Vq[α₁, n₁]) * Vk[α₂, m] * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4((-q, k, q, -k), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vk[α₂+L, m]) * conj(Vq[α₃+L, n₁]) * Vq[α₄, n₂] * φ4((k, -k, -q, q), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vq[α₂+L, n₁]) * conj(Vk[α₃+L, m]) * Vq[α₄, n₂] * φ4((k, -q, -k, q), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vk[α₂+L, m]) * Vq[α₃, n₂] * conj(Vq[α₄+L, n₁]) * φ4((k, -k, q, -q), φas, bond.n) +
+               Vq[α₁+L, n₂] * conj(Vq[α₂+L, n₁]) * Vk[α₃, m] * conj(Vk[α₄+L, m]) * φ4((q, -q, k, -k), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vq[α₂+L, n₁]) * Vq[α₃, n₂] * conj(Vk[α₄+L, m]) * φ4((k, -q, q, -k), φas, bond.n) +
+               Vq[α₁+L, n₂] * Vk[α₂, m] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4((q, k, -k, -q), φas, bond.n) +
+               Vk[α₁+L, m] * Vq[α₂, n₂] * conj(Vk[α₃+L, m]) * conj(Vq[α₄+L, n₁]) * φ4((k, q, -k, -q), φas, bond.n) +
+               Vq[α₁+L, n₂] * Vk[α₂, m] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4((q, k, -q, -k), φas, bond.n) +
+               Vk[α₁+L, m] * Vq[α₂, n₂] * conj(Vq[α₃+L, n₁]) * conj(Vk[α₄+L, m]) * φ4((k, q, -q, -k), φas, bond.n)
            end
         end
 
@@ -111,18 +111,18 @@ function quadratic_Q43_dipole(npt::NonPerturbativeTheory, bond::Bond, q::Vec3, q
            i = linear_indices[cart] 
            n₁, n₂ = cart[1], cart[2]
            for m in 1:L
-               f[i] += conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * conj(Vk[α₃, m]) * Vq[α₄, n₂] * φ4([-q, k, -k, q], φas, bond.n) +
-               conj(Vq[α₁, n₁]) * Vq[α₂+L, n₂] * Vk[α₃+L, m] * conj(Vk[α₄+L, m]) * φ4([-q, q, k, -k], φas, bond.n) +
-               conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * Vq[α₃+L, n₂] * conj(Vk[α₄+L, m]) * φ4([-q, k, q, -k], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vk[α₂, m]) * conj(Vq[α₃, n₁]) * Vq[α₄, n₂] * φ4([k, -k, -q, q], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * conj(Vk[α₃, m]) * Vq[α₄, n₂] * φ4([k, -q, -k, q], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vk[α₂, m]) * Vq[α₃+L, n₂] * conj(Vq[α₄+L, n₁]) * φ4([k, -k, q, -q], φas, bond.n) +
-               Vq[α₁+L, n₂] * conj(Vq[α₂, n₁]) * Vk[α₃+L, m] * conj(Vk[α₄+L, m]) * φ4([q, -q, k, -k], φas, bond.n) +
-               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * Vq[α₃+L, n₂] * conj(Vk[α₄+L, m]) * φ4([k, -q, q, -k], φas, bond.n) +
-               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vk[α₃, m]) * conj(Vq[α₄+L, n₁]) * φ4([q, k, -k, -q], φas, bond.n) +
-               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vk[α₃, m]) * conj(Vq[α₄+L, n₁]) * φ4([k, q, -k, -q], φas, bond.n) +
-               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vq[α₃, n₁]) * conj(Vk[α₄+L, m]) * φ4([q, k, -q, -k], φas, bond.n) +
-               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vq[α₃, n₁]) * conj(Vk[α₄+L, m]) * φ4([k, q, -q, -k], φas, bond.n)
+               f[i] += conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * conj(Vk[α₃, m]) * Vq[α₄, n₂] * φ4((-q, k, -k, q), φas, bond.n) +
+               conj(Vq[α₁, n₁]) * Vq[α₂+L, n₂] * Vk[α₃+L, m] * conj(Vk[α₄+L, m]) * φ4((-q, q, k, -k), φas, bond.n) +
+               conj(Vq[α₁, n₁]) * Vk[α₂+L, m] * Vq[α₃+L, n₂] * conj(Vk[α₄+L, m]) * φ4((-q, k, q, -k), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vk[α₂, m]) * conj(Vq[α₃, n₁]) * Vq[α₄, n₂] * φ4((k, -k, -q, q), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * conj(Vk[α₃, m]) * Vq[α₄, n₂] * φ4((k, -q, -k, q), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vk[α₂, m]) * Vq[α₃+L, n₂] * conj(Vq[α₄+L, n₁]) * φ4((k, -k, q, -q), φas, bond.n) +
+               Vq[α₁+L, n₂] * conj(Vq[α₂, n₁]) * Vk[α₃+L, m] * conj(Vk[α₄+L, m]) * φ4((q, -q, k, -k), φas, bond.n) +
+               Vk[α₁+L, m] * conj(Vq[α₂, n₁]) * Vq[α₃+L, n₂] * conj(Vk[α₄+L, m]) * φ4((k, -q, q, -k), φas, bond.n) +
+               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vk[α₃, m]) * conj(Vq[α₄+L, n₁]) * φ4((q, k, -k, -q), φas, bond.n) +
+               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vk[α₃, m]) * conj(Vq[α₄+L, n₁]) * φ4((k, q, -k, -q), φas, bond.n) +
+               Vq[α₁+L, n₂] * Vk[α₂+L, m] * conj(Vq[α₃, n₁]) * conj(Vk[α₄+L, m]) * φ4((q, k, -q, -k), φas, bond.n) +
+               Vk[α₁+L, m] * Vq[α₂+L, n₂] * conj(Vq[α₃, n₁]) * conj(Vk[α₄+L, m]) * φ4((k, q, -q, -k), φas, bond.n)
            end
         end
 
