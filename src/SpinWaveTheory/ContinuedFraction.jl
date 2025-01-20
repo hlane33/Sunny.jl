@@ -165,7 +165,7 @@ function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64
     as = zeros(niters)
     bs = zeros(niters-1)
 
-    num_obs = num_observables(swt.observables)
+    num_obs = num_observables(swt.measure)
     ret = zeros(length(ωs), num_obs)
     for i in 1:num_obs
         f0 = view(f0s, :, i)
