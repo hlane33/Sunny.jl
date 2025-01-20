@@ -1,49 +1,3 @@
-struct TwoParticleState
-    q1 :: Vec3
-    q2 :: Vec3
-    qcom :: Vec3
-    q1_carts_index :: CartesianIndex
-    q2_carts_index :: CartesianIndex
-    qcom_carts_index :: CartesianIndex
-    band1 :: Int
-    band2 :: Int
-    global_index_i :: Int
-    global_index_j :: Int
-    com_index :: Int
-    ζ :: Float64
-end
-
-function generate_two_particle_basis(cluster_size::NTuple{3, Int}, numbands::Int)
-    Nu1, Nu2, Nu3 = cluster_size
-    qs = [Vec3(i/Nu1, j/Nu2, k/Nu3) for i in 0:Nu1-1, j in 0:Nu2-1, k in 0:Nu3-1]
-    cartes_indices = CartesianIndices((1:Nu1, 1:Nu2, 1:Nu3, 1:numbands))
-    linear_indices = LinearIndices(cartes_indices)
-
-    tp_counts = zeros(Int, Nu1, Nu2, Nu3)
-    tp_states = [TwoParticleState[] for _ in 1:Nu1, _ in 1:Nu2, _ in 1:Nu3]
-
-    for ci in cartes_indices, cj in cartes_indices
-        i = linear_indices[ci]
-        j = linear_indices[cj]
-        if i ≤ j
-            q1_carts_index = CartesianIndex(ci[1], ci[2], ci[3])
-            q2_carts_index = CartesianIndex(cj[1], cj[2], cj[3])
-            q1 = qs[q1_carts_index]
-            q2 = qs[q2_carts_index]
-            qcom = mod.(q1+q2, 1.0)
-            qcom_carts_index = CartesianIndex(mod(ci[1]+cj[1]-2, Nu1)+1, mod(ci[2]+cj[2]-2, Nu2)+1, mod(ci[3]+cj[3]-2, Nu3)+1)
-
-            tp_counts[qcom_carts_index] += 1
-            ζ = i == j ? 1/√2 : 1.0
-            tp_state = TwoParticleState(q1, q2, qcom, q1_carts_index, q2_carts_index, qcom_carts_index, ci[4], cj[4], i, j, tp_counts[qcom_carts_index], ζ)
-            push!(tp_states[qcom_carts_index], tp_state)
-        end
-    end
-
-    return tp_states
-
-end
-
 struct RealSpaceQuarticVerticesSUN
     V41 :: Array{ComplexF64, 4}
     V42 :: Array{ComplexF64, 2}
@@ -71,7 +25,6 @@ end
 struct NonPerturbativeTheory
     swt :: SpinWaveTheory
     clustersize :: NTuple{3, Int}   # Cluster size for number of magnetic unit cell
-    two_particle_states :: Array{Vector{TwoParticleState}, 3}
     qs :: Array{Vec3, 3}
     Es :: Array{Float64, 4}
     Vps :: Array{ComplexF64, 5}
@@ -206,7 +159,6 @@ function NonPerturbativeTheory(swt::SpinWaveTheory, clustersize::NTuple{3, Int})
     @assert isodd(Nu1) && isodd(Nu2) && isodd(Nu3) "Each linear dimension of the non-perturbative cluster must be odd to guarantee an equal number of two particle states for all `qcom`s."
 
     L = nbands(swt)
-    two_particle_states = generate_two_particle_basis(clustersize, L)
 
     qs = [Vec3([i/Nu1, j/Nu2, k/Nu3]) for i in 0:Nu1-1, j in 0:Nu2-1, k in 0:Nu3-1]
 
@@ -231,6 +183,44 @@ function NonPerturbativeTheory(swt::SpinWaveTheory, clustersize::NTuple{3, Int})
         real_space_cubic_vertices   = calculate_real_space_cubic_vertices_dipole(sys)
     end
 
-    return NonPerturbativeTheory(swt, clustersize, two_particle_states, qs, Es, Vps, real_space_quartic_vertices, real_space_cubic_vertices)
+    return NonPerturbativeTheory(swt, clustersize, qs, Es, Vps, real_space_quartic_vertices, real_space_cubic_vertices)
 
+end
+
+"""
+    generate_two_particle_states(clustersize, q_index::CartesianIndex{3})
+
+For a given `q_index::CartesianIndex{3}`, this block constructs a `Dict` that 
+contains all possible two-particle states sharing the same center-of-mass momentum.
+The dictionary keys consist of:
+ - The Cartesian indices `q1` and `q2`, representing the momenta of the two particles.
+ - The band indices of the two particles.
+ 
+The dictionary values consist of a tuple with:
+ 1. The center-of-mass index of the state (an integer).
+ 2. The bosonic symmetry factor, which is either 1 (for distinguishable particles) or 1/√2 (for identical bosons in the same state).
+ 3. The final two components are the global indices of the two-particle state.
+"""
+function generate_two_particle_states(clustersize, L::Int, q_index::CartesianIndex{3})
+    Nu1, Nu2, Nu3 = clustersize
+    dict_states = Dict{Tuple{CartesianIndex{3}, CartesianIndex{3}, Int, Int}, Tuple{Int, Float64, Int, Int}}()
+    cartes_indices = CartesianIndices((1:Nu1, 1:Nu2, 1:Nu3, 1:L))
+    linear_indices = LinearIndices(cartes_indices)
+    com_index = 0
+    for k_index in CartesianIndices((1:Nu1, 1:Nu2, 1:Nu3))
+        qmk_index = CartesianIndex(mod(q_index[1]-k_index[1], Nu1)+1, mod(q_index[2]-k_index[2], Nu2)+1, mod(q_index[3]-k_index[3], Nu3)+1)
+        for band1 in 1:L
+            ci = CartesianIndex(Tuple(k_index)..., band1)
+            i  = linear_indices[ci]
+            for band2 in 1:L
+                cj = CartesianIndex(Tuple(qmk_index)..., band2)
+                j  = linear_indices[cj]
+                if i ≤ j
+                    com_index += 1
+                    dict_states[(k_index, qmk_index, band1, band2)] = (com_index, i == j ? 1/√2 : 1.0, i, j)
+                end
+            end
+        end
+    end
+    return dict_states
 end

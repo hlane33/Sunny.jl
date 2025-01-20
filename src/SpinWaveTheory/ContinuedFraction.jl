@@ -1,5 +1,5 @@
-function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_carts_index::CartesianIndex{3})
-    (; swt, two_particle_states, clustersize) = npt
+function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_index::CartesianIndex{3})
+    (; swt, clustersize) = npt
     (; sys, data) = swt
     (; observables_localized) = data
     cryst = orig_crystal(sys)
@@ -14,18 +14,21 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_c
     sqrt_halfS = √(S/2)
 
     num_1ps = nbands(swt)
-    num_2ps = length(two_particle_states[qcom_carts_index])
+    # Number of two-particle states is given by the following combinatorial formula:
+    num_2ps = Int(binomial(Nu*num_1ps+2-1, 2) / Nu)
+
+    dict_states = generate_two_particle_states(clustersize, num_1ps, q_index)
 
     f0s = zeros(ComplexF64, num_1ps+num_2ps, num_obs)
-    # Note that: in Sunny.jl, the convention for the dynamical spin structure factor is normalized to the number of unit cells instead of the number of sites. As a result, we do not include the 1/√Nm factor in for the initial state.
 
+    # Note that: in Sunny.jl, the convention for the dynamical spin structure factor is normalized to the number of unit cells instead of the number of sites. As a result, we do not include the 1/√Nm factor in for the initial state.
     Avec_pref = zeros(ComplexF64, Nm)
     for i in 1:Nm
         r_global = global_position(sys, (1,1,1,i))
         Avec_pref[i] = exp(1im * dot(q_global, r_global))
     end
     
-    Vq = npt.Vps[:, :, qcom_carts_index]
+    Vq = npt.Vps[:, :, q_index]
     if sys.mode == :SUN
         # Get the initial state components for the one-particle states
         for band in 1:num_1ps
@@ -41,28 +44,25 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_c
         end
         
         # Get the initial state components for the two-particle states
-        for state in two_particle_states[qcom_carts_index]
-            is = state.com_index + num_1ps
+        for key in keys(dict_states)
+            (q1_index, q2_index, band1, band2) = Tuple(key)
+            (com_index, ζ, _, _) = dict[key]
+            is = com_index + num_1ps
 
-            q1_carts_index = state.q1_carts_index
-            q2_carts_index = state.q2_carts_index
-
-            vq1 = reshape(view(npt.Vps[:, :, q1_carts_index], :, state.band1), N-1, Nm, 2)
-            vq2 = reshape(view(npt.Vps[:, :, q2_carts_index], :, state.band2), N-1, Nm, 2)
+            vq1 = reshape(view(npt.Vps[:, :, q1_index], :, band1), N-1, Nm, 2)
+            vq2 = reshape(view(npt.Vps[:, :, q2_index], :, band2), N-1, Nm, 2)
 
             for i in 1:Nm
                 for μ in 1:num_obs
                     O = observables_localized[μ, i]
                     for α in 1:N-1
                         for β in 1:N-1
-                            f0s[is, μ] += Avec_pref[i] * (O[α, β] - O[N, N] * δ(α, β)) * (conj(vq1[α, i, 1]) * conj(vq2[β, i, 2]) + conj(vq1[β, i, 2]) * conj(vq2[α, i, 1])) / (√Nu * state.ζ)
+                            f0s[is, μ] += Avec_pref[i] * (O[α, β] - O[N, N] * δ(α, β)) * (conj(vq1[α, i, 1]) * conj(vq2[β, i, 2]) + conj(vq1[β, i, 2]) * conj(vq2[α, i, 1])) / (√Nu * ζ)
                         end
                     end
                 end
             end
-
         end
-
     else
         # TODO: add a more clear note for this part, now I will follow Zhentao's note
         @assert sys.mode in (:dipole, :dipole_large_S)
@@ -77,22 +77,20 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, qcom_c
             end
         end
 
-        for state in two_particle_states[qcom_carts_index]
-            is = state.com_index + num_1ps
+        for key in keys(dict_states)
+            (q1_index, q2_index, band1, band2) = key
+            (com_index, ζ, _, _) = dict_states[key]
+            is = com_index + num_1ps
 
-            q1_carts_index = state.q1_carts_index
-            q2_carts_index = state.q2_carts_index
-
-            vq1 = reshape(view(npt.Vps[:, :, q1_carts_index], :, state.band1), Nm, 2)
-            vq2 = reshape(view(npt.Vps[:, :, q2_carts_index], :, state.band2), Nm, 2)
+            vq1 = reshape(view(npt.Vps[:, :, q1_index], :, band1), Nm, 2)
+            vq2 = reshape(view(npt.Vps[:, :, q2_index], :, band2), Nm, 2)
 
             for i in 1:Nm
                 for μ in 1:num_obs
                     O = observables_localized[μ, i]
-                    f0s[is, μ] += Avec_pref[i] * O[3] * (conj(vq1[i, 2])*conj(vq2[i, 1]) + conj(vq1[i, 1])*conj(vq2[i, 2]) )  / (√Nu * state.ζ)
+                    f0s[is, μ] += Avec_pref[i] * O[3] * (conj(vq1[i, 2])*conj(vq2[i, 1]) + conj(vq1[i, 1])*conj(vq2[i, 2]) )  / (√Nu * ζ)
                 end
             end
-
         end
     end
 
@@ -135,6 +133,7 @@ end
 function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64, niters::Int; single_particle_correction::Bool=true, opts...)
     (; clustersize, swt) = npt
     Nu1, Nu2, Nu3 = clustersize
+    Nu = Nu1 * Nu2 * Nu3
     all_qs = [[i/Nu1, j/Nu2, k/Nu3] for i in 0:Nu1-1, j in 0:Nu2-1, k in 0:Nu3-1]
     @assert q in all_qs "The momentum is not in the grid."
 
@@ -145,21 +144,22 @@ function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64
     end
     # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
     q_reshaped = mod.(q_reshaped, 1.0)
-    qcom_carts_index = findmin(x -> norm(x - q_reshaped), all_qs)[2]
+    q_index = findmin(x -> norm(x - q_reshaped), all_qs)[2]
 
     # Calculate initial states for all observables
-    f0s = continued_fraction_initial_states(npt, q, qcom_carts_index)
+    f0s = continued_fraction_initial_states(npt, q, q_index)
 
-    num_1ps = nbands(npt.swt)
-    num_2ps = length(npt.two_particle_states[qcom_carts_index])
+    num_1ps = nbands(swt)
+    # Number of two-particle states is given by the following combinatorial formula:
+    num_2ps = Int(binomial(Nu*num_1ps+2-1, 2) / Nu)
 
     H = zeros(ComplexF64, num_1ps+num_2ps, num_1ps+num_2ps)
     H1ps = view(H, 1:num_1ps, 1:num_1ps)
     H2ps = view(H, num_1ps+1:num_1ps+num_2ps, num_1ps+1:num_1ps+num_2ps)
     H12ps = view(H, 1:num_1ps, num_1ps+1:num_1ps+num_2ps)
-    one_particle_hamiltonian!(H1ps, npt, qcom_carts_index; single_particle_correction, opts...)
-    two_particle_hamiltonian!(H2ps, npt, qcom_carts_index)
-    one_to_two_particle_hamiltonian!(H12ps, npt, qcom_carts_index)
+    one_particle_hamiltonian!(H1ps, npt, q_index; single_particle_correction, opts...)
+    two_particle_hamiltonian!(H2ps, npt, q_index)
+    one_to_two_particle_hamiltonian!(H12ps, npt, q_index)
 
     # At this moment, we only support the correlation function for the same observable
     as = zeros(niters)
@@ -188,6 +188,7 @@ end
 function dssf_continued_fraction_two_particle(npt::NonPerturbativeTheory, q, ωs, η::Float64, niters::Int)
     (; clustersize, swt) = npt
     Nu1, Nu2, Nu3 = clustersize
+    Nu = Nu1 * Nu2 * Nu3
     all_qs = [[i/Nu1, j/Nu2, k/Nu3] for i in 0:Nu1-1, j in 0:Nu2-1, k in 0:Nu3-1]
     @assert q in all_qs "The momentum is not in the grid."
 
@@ -198,17 +199,17 @@ function dssf_continued_fraction_two_particle(npt::NonPerturbativeTheory, q, ωs
     end
     # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
     q_reshaped = mod.(q_reshaped, 1.0)
-    qcom_carts_index = findmin(x -> norm(x - q_reshaped), all_qs)[2]
+    q_index = findmin(x -> norm(x - q_reshaped), all_qs)[2]
 
     # Calculate initial states for all observables
-    f0s = continued_fraction_initial_states(npt, q, qcom_carts_index)
+    f0s = continued_fraction_initial_states(npt, q, q_index)
 
     num_1ps = nbands(swt)
-    num_2ps = length(npt.two_particle_states[qcom_carts_index])
+    num_2ps = Int(binomial(Nu*num_1ps+2-1, 2) / Nu)
     f0 = view(f0s, num_1ps+1:num_1ps+num_2ps, 3)
 
     H = zeros(ComplexF64, num_2ps, num_2ps)
-    two_particle_hamiltonian!(H, npt, qcom_carts_index)
+    two_particle_hamiltonian!(H, npt, q_index)
 
     # At this moment, we only support the correlation function for the same observable
     as = zeros(niters)
