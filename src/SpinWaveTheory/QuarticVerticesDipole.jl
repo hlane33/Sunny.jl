@@ -19,18 +19,8 @@ function quartic_U40_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     end
 end
 
-function quartic_U40_symmetrized_dipole(npt::NonPerturbativeTheory, qs_indices::NTuple{4, CartesianIndex{3}}, α::Int)
-    swt = npt.swt
-    L = nbands(swt)
-    iq₁ = qs_indices[1]
-    iq₂ = qs_indices[2]
-    iq₃ = qs_indices[3]
-    iq₄ = qs_indices[4]
-
-    U4 = zeros(ComplexF64, L, L, L, L)
-    U4_buf = zeros(ComplexF64, L, L, L, L)
-    # A new buffer to hold the permuted results. According to Julia docs "No in-place permutation is supported and unexpected results will happen if src and dest have overlapping memory regions."
-    U4_buf_perm = zeros(ComplexF64, L, L, L, L)
+function quartic_U40_symmetrized_dipole!(U4::Array{ComplexF64, 4}, U4_buf::Array{ComplexF64, 4}, U4_buf_perm::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, qs_indices::NTuple{4, CartesianIndex{3}}, α::Int)
+    iq₁, iq₂, iq₃, iq₄ = qs_indices
 
     quartic_U40_dipole!(U4_buf, npt, qs_indices, α)
     U4 .+= U4_buf
@@ -52,10 +42,7 @@ function quartic_U41_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     U41_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
+    q₁, q₂, q₃, q₄ = qs
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -86,10 +73,7 @@ function quartic_U42_dipole!(U42_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     U42_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
+    q₁, q₂, q₃, q₄ = qs
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -120,10 +104,7 @@ function quartic_U43_dipole!(U43_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     U43_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
+    q₁, q₂, q₃, q₄ = qs
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -150,22 +131,15 @@ function quartic_U43_dipole!(U43_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     end
 end
 
-function quartic_U4_symmetrized_dipole(quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
-    swt = npt.swt
-    L = nbands(swt)
-    q₁ = qs[1]
-    q₂ = qs[2]
-    q₃ = qs[3]
-    q₄ = qs[4]
-    iq₁ = qs_indices[1]
-    iq₂ = qs_indices[2]
-    iq₃ = qs_indices[3]
-    iq₄ = qs_indices[4]
+function quartic_U4_symmetrized_dipole!(U4::Array{ComplexF64, 4}, U4_buf::Array{ComplexF64, 4}, U4_buf_perm::Array{ComplexF64, 4}, quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
+    U4 .= 0.0
+    U4_buf .= 0.0
+    U4_buf_perm .= 0.0
 
-    U4 = zeros(ComplexF64, L, L, L, L)
-    U4_buf = zeros(ComplexF64, L, L, L, L)
-    # A new buffer to hold the permuted results. According to Julia docs "No in-place permutation is supported and unexpected results will happen if src and dest have overlapping memory regions."
-    U4_buf_perm = zeros(ComplexF64, L, L, L, L)
+    q₁, q₂, q₃, q₄ = qs
+    iq₁, iq₂, iq₃, iq₄ = qs_indices
+
+    # Note that a seperate buffer `U4_buf_perm` for `U4_buf` is necessary. Because according to Julia docs "No in-place permutation is supported and unexpected results will happen if src and dest have overlapping memory regions."
 
     quartic_fun(U4_buf, npt, bond, qs, qs_indices, φas)
     U4 .+= U4_buf
@@ -182,7 +156,6 @@ function quartic_U4_symmetrized_dipole(quartic_fun::Function, npt::NonPerturbati
     permutedims!(U4_buf_perm, U4_buf, (2, 1, 4, 3))
     U4 .+= U4_buf_perm
 
-    return U4
 end
 
 function quartic_vertex_dipole(npt::NonPerturbativeTheory, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}})
@@ -197,7 +170,10 @@ function quartic_vertex_dipole(npt::NonPerturbativeTheory, qs::NTuple{4, Vec3}, 
         @assert iszero(c6) "Rank 6 Stevens operators not supported in :dipole non-perturbative calculations yet"
     end
 
+    U4_tot = zeros(ComplexF64, L, L, L, L)
     U4 = zeros(ComplexF64, L, L, L, L)
+    U4_buf = zeros(ComplexF64, L, L, L, L)
+    U4_buf_perm = zeros(ComplexF64, L, L, L, L)
 
     # For dipole mode, we first loop over all interactions
     i = 0
@@ -207,22 +183,37 @@ function quartic_vertex_dipole(npt::NonPerturbativeTheory, qs::NTuple{4, Vec3}, 
             bond = coupling.bond
             i += 1
 
-            U4_1 = quartic_U4_symmetrized_dipole(quartic_U41_dipole!, npt, bond, qs, qs_indices, (0, 1, 0, 1))
-            U4_2 = quartic_U4_symmetrized_dipole(quartic_U42_dipole!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
-            U4_3 = quartic_U4_symmetrized_dipole(quartic_U41_dipole!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
-            U4_4 = quartic_U4_symmetrized_dipole(quartic_U41_dipole!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
-            U4_5 = quartic_U4_symmetrized_dipole(quartic_U43_dipole!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
-            U4_6 = quartic_U4_symmetrized_dipole(quartic_U42_dipole!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
-            U4_7 = quartic_U4_symmetrized_dipole(quartic_U41_dipole!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
-            U4_8 = quartic_U4_symmetrized_dipole(quartic_U41_dipole!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
-            U4_9 = quartic_U4_symmetrized_dipole(quartic_U43_dipole!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
-
             V41 = real_space_quartic_vertices[i].V41
             V42 = real_space_quartic_vertices[i].V42
             V43 = real_space_quartic_vertices[i].V43
 
-            @. U4 += V41 * U4_1 + V42 * (U4_2 + U4_6) + V43 * (U4_3 + U4_7) + conj(V42) * (U4_5 + U4_9) + conj(V43) * (U4_4 + U4_8)
+            # Add the contribution term by term without allocating new memory
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, quartic_U41_dipole!, npt, bond, qs, qs_indices, (0, 1, 0, 1))
+            @. U4_tot += V41 * U4
 
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm,quartic_U42_dipole!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
+            @. U4_tot += V42 * U4
+
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, quartic_U43_dipole!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
+            @. U4_tot += conj(V42) * U4
+
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, quartic_U41_dipole!, npt, bond, qs, qs_indices, (1, 1, 1, 0))
+            @. U4_tot += V43 * U4
+
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, quartic_U41_dipole!, npt, bond, qs, qs_indices, (0, 1, 1, 1))
+            @. U4_tot += conj(V43) * U4
+
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm,quartic_U42_dipole!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
+            @. U4_tot += V42 * U4
+
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, quartic_U43_dipole!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
+            @. U4_tot += conj(V42) * U4
+
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, quartic_U41_dipole!, npt, bond, qs, qs_indices, (1, 0, 0, 0))
+            @. U4_tot += V43 * U4
+
+            quartic_U4_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, quartic_U41_dipole!, npt, bond, qs, qs_indices, (0, 0, 0, 1))
+            @. U4_tot += conj(V43) * U4
         end
     end
 
@@ -241,9 +232,9 @@ function quartic_vertex_dipole(npt::NonPerturbativeTheory, qs::NTuple{4, Vec3}, 
         c20 = c2[3] / c₂
         c40 = c4[5] / c₄
 
-        U4_0 = quartic_U40_symmetrized_dipole(npt, qs_indices, i)
-        @. U4 += (3c20 + 180S^2*(1-5/(2S)+3/(2S^2))*c40) * U4_0
+        quartic_U40_symmetrized_dipole!(U4, U4_buf, U4_buf_perm, npt, qs_indices, i)
+        @. U4_tot += (3c20 + 180S^2*(1-5/(2S)+3/(2S^2))*c40) * U4
     end
 
-    return U4
+    return U4_tot
 end
