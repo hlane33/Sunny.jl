@@ -131,11 +131,9 @@ function modified_lanczos_aux!(as, bs, H, f0, niters)
 end
 
 function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64, niters::Int; single_particle_correction::Bool=true, opts...)
-    (; clustersize, swt) = npt
+    (; clustersize, swt, qs) = npt
     Nu1, Nu2, Nu3 = clustersize
     Nu = Nu1 * Nu2 * Nu3
-    all_qs = [[i/Nu1, j/Nu2, k/Nu3] for i in 0:Nu1-1, j in 0:Nu2-1, k in 0:Nu3-1]
-    @assert q in all_qs "The momentum is not in the grid."
 
     # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
     q_reshaped = to_reshaped_rlu(npt.swt.sys, q)
@@ -144,7 +142,14 @@ function dssf_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::Float64
     end
     # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
     q_reshaped = mod.(q_reshaped, 1.0)
-    q_index = findmin(x -> norm(x - q_reshaped), all_qs)[2]
+    for i in 1:3
+        (abs(q_reshaped[i]) < 1e-12) && (q_reshaped = setindex(q_reshaped, 0.0, i))
+    end
+    q_index = findmin(x -> norm(x - q_reshaped), qs)[2]
+
+    if norm(qs[q_index] - q_reshaped) > 1e-12
+        @warn "The momentum is not in the grid. The closest momentum in the grid is $(qs[q_index])."
+    end
 
     # Calculate initial states for all observables
     f0s = continued_fraction_initial_states(npt, q, q_index)
