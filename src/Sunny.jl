@@ -99,6 +99,7 @@ include("SpinWaveTheory/NonPerturbative.jl")
 include("SpinWaveTheory/QuarticVertices.jl")
 include("SpinWaveTheory/QuarticVerticesDipole.jl")
 include("SpinWaveTheory/QuarticVerticesSUN.jl")
+include("SpinWaveTheory/TwoParticleHamiltonian.jl")
 export SpinWaveTheory, excitations, excitations!, dispersion, intensities, intensities_bands,
     intensities_static
 
