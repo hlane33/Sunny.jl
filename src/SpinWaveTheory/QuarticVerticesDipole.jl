@@ -1,5 +1,5 @@
 
-function quartic_U40_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function quartic_U40_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, qs_indices::NTuple{4, CartesianIndex{3}}, α::Int)
     U41_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
@@ -19,10 +19,13 @@ function quartic_U40_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     end
 end
 
-function quartic_U40_symmetrized_dipole(npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function quartic_U40_symmetrized_dipole(npt::NonPerturbativeTheory, qs_indices::NTuple{4, CartesianIndex{3}}, α::Int)
     swt = npt.swt
     L = nbands(swt)
-    iq₁, iq₂, iq₃, iq₄ = qs_indices
+    iq₁ = qs_indices[1]
+    iq₂ = qs_indices[2]
+    iq₃ = qs_indices[3]
+    iq₄ = qs_indices[4]
 
     U4 = zeros(ComplexF64, L, L, L, L)
     U4_buf = zeros(ComplexF64, L, L, L, L)
@@ -32,24 +35,27 @@ function quartic_U40_symmetrized_dipole(npt::NonPerturbativeTheory, qs_indices::
     quartic_U40_dipole!(U4_buf, npt, qs_indices, α)
     U4 .+= U4_buf
 
-    quartic_U40_dipole!(U4_buf, npt,[iq₂, iq₁, iq₃, iq₄], α)
+    quartic_U40_dipole!(U4_buf, npt, (iq₂, iq₁, iq₃, iq₄), α)
     permutedims!(U4_buf_perm, U4_buf, (2, 1, 3, 4))
     U4 .+= U4_buf_perm
 
-    quartic_U40_dipole!(U4_buf, npt,[iq₁, iq₂, iq₄, iq₃], α)
+    quartic_U40_dipole!(U4_buf, npt, (iq₁, iq₂, iq₄, iq₃), α)
     permutedims!(U4_buf_perm, U4_buf, (1, 2, 4, 3))
     U4 .+= U4_buf_perm
 
-    quartic_U40_dipole!(U4_buf, npt,[iq₂, iq₁, iq₄, iq₃], α)
+    quartic_U40_dipole!(U4_buf, npt, (iq₂, iq₁, iq₄, iq₃), α)
     permutedims!(U4_buf_perm, U4_buf, (2, 1, 4, 3))
     U4 .+= U4_buf_perm
 end
 
-function quartic_U41_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U41_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     U41_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -76,11 +82,14 @@ function quartic_U41_dipole!(U41_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     end
 end
 
-function quartic_U42_dipole!(U42_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U42_dipole!(U42_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     U42_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -107,11 +116,14 @@ function quartic_U42_dipole!(U42_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     end
 end
 
-function quartic_U43_dipole!(U43_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U43_dipole!(U43_buf::Array{ComplexF64, 4}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     U43_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -138,11 +150,17 @@ function quartic_U43_dipole!(U43_buf::Array{ComplexF64, 4}, npt::NonPerturbative
     end
 end
 
-function quartic_U4_symmetrized_dipole(quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U4_symmetrized_dipole(quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     swt = npt.swt
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
-    iq₁, iq₂, iq₃, iq₄ = qs_indices
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
+    iq₁ = qs_indices[1]
+    iq₂ = qs_indices[2]
+    iq₃ = qs_indices[3]
+    iq₄ = qs_indices[4]
 
     U4 = zeros(ComplexF64, L, L, L, L)
     U4_buf = zeros(ComplexF64, L, L, L, L)
@@ -152,22 +170,22 @@ function quartic_U4_symmetrized_dipole(quartic_fun::Function, npt::NonPerturbati
     quartic_fun(U4_buf, npt, bond, qs, qs_indices, φas)
     U4 .+= U4_buf
 
-    quartic_fun(U4_buf, npt, bond, [q₂, q₁, q₃, q₄], [iq₂, iq₁, iq₃, iq₄], φas)
+    quartic_fun(U4_buf, npt, bond, (q₂, q₁, q₃, q₄), (iq₂, iq₁, iq₃, iq₄), φas)
     permutedims!(U4_buf_perm, U4_buf, (2, 1, 3, 4))
     U4 .+= U4_buf_perm
 
-    quartic_fun(U4_buf, npt, bond, [q₁, q₂, q₄, q₃], [iq₁, iq₂, iq₄, iq₃], φas)
+    quartic_fun(U4_buf, npt, bond, (q₁, q₂, q₄, q₃), (iq₁, iq₂, iq₄, iq₃), φas)
     permutedims!(U4_buf_perm, U4_buf, (1, 2, 4, 3))
     U4 .+= U4_buf_perm
 
-    quartic_fun(U4_buf, npt, bond, [q₂, q₁, q₄, q₃], [iq₂, iq₁, iq₄, iq₃], φas)
+    quartic_fun(U4_buf, npt, bond, (q₂, q₁, q₄, q₃), (iq₂, iq₁, iq₄, iq₃), φas)
     permutedims!(U4_buf_perm, U4_buf, (2, 1, 4, 3))
     U4 .+= U4_buf_perm
 
     return U4
 end
 
-function quartic_vertex_dipole(npt::NonPerturbativeTheory, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}})
+function quartic_vertex_dipole(npt::NonPerturbativeTheory, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}})
     (; swt, real_space_quartic_vertices) = npt
     (; sys, data) = swt
     (; stevens_coefs) = data

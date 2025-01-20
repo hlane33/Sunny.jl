@@ -46,7 +46,7 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_inde
         # Get the initial state components for the two-particle states
         for key in keys(dict_states)
             (q1_index, q2_index, band1, band2) = Tuple(key)
-            (com_index, ζ, _, _) = dict[key]
+            (com_index, ζ, _, _) = dict_states[key]
             is = com_index + num_1ps
 
             vq1 = reshape(view(npt.Vps[:, :, q1_index], :, band1), N-1, Nm, 2)

@@ -9,13 +9,16 @@ end
 
 # Given the `npt`, and a `pc`, and a series of `qs` and their indices `qs_indices`, and `φas` return to the quartic vertex
 # (N-1) × (N-1) × (N-1) × (N-1) × L × L × L × L array
-function quartic_U41_SUN!(U41_buf::Array{ComplexF64, 8}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U41_SUN!(U41_buf::Array{ComplexF64, 8}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     U41_buf .= 0.0
     (; swt, Vps) = npt
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -42,13 +45,16 @@ function quartic_U41_SUN!(U41_buf::Array{ComplexF64, 8}, npt::NonPerturbativeThe
     end
 end
 
-function quartic_U42_SUN!(U42_buf::Array{ComplexF64, 8}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U42_SUN!(U42_buf::Array{ComplexF64, 8}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     U42_buf .= 0.0
     (; swt, Vps) = npt
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -75,13 +81,16 @@ function quartic_U42_SUN!(U42_buf::Array{ComplexF64, 8}, npt::NonPerturbativeThe
     end
 end
 
-function quartic_U43_SUN!(U43_buf::Array{ComplexF64, 8}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U43_SUN!(U43_buf::Array{ComplexF64, 8}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     U43_buf .= 0.0
     (; swt, Vps) = npt
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
 
     αs = (bond.i, bond.j)
     α₁, α₂, α₃, α₄ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1], αs[φas[4]+1]
@@ -108,13 +117,19 @@ function quartic_U43_SUN!(U43_buf::Array{ComplexF64, 8}, npt::NonPerturbativeThe
     end
 end
 
-function quartic_U4_symmetrized_SUN(quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{4, Int})
+function quartic_U4_symmetrized_SUN(quartic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}}, φas::NTuple{4, Int})
     swt = npt.swt
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁, q₂, q₃, q₄ = view(qs, :)
-    iq₁, iq₂, iq₃, iq₄ = qs_indices
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    q₄ = qs[4]
+    iq₁ = qs_indices[1]
+    iq₂ = qs_indices[2]
+    iq₃ = qs_indices[3]
+    iq₄ = qs_indices[4]
 
     U4 = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
     U4_buf = zeros(ComplexF64, nflavors, nflavors, nflavors, nflavors, L, L, L, L)
@@ -124,22 +139,22 @@ function quartic_U4_symmetrized_SUN(quartic_fun::Function, npt::NonPerturbativeT
     quartic_fun(U4_buf, npt, bond, qs, qs_indices, φas)
     U4 .+= U4_buf
 
-    quartic_fun(U4_buf, npt, bond, [q₂, q₁, q₃, q₄], [iq₂, iq₁, iq₃, iq₄], φas)
+    quartic_fun(U4_buf, npt, bond, (q₂, q₁, q₃, q₄), (iq₂, iq₁, iq₃, iq₄), φas)
     permutedims!(U4_buf_perm, U4_buf, (1, 2, 3, 4, 6, 5, 7, 8))
     U4 .+= U4_buf_perm
 
-    quartic_fun(U4_buf, npt, bond, [q₁, q₂, q₄, q₃], [iq₁, iq₂, iq₄, iq₃], φas)
+    quartic_fun(U4_buf, npt, bond, (q₁, q₂, q₄, q₃), (iq₁, iq₂, iq₄, iq₃), φas)
     permutedims!(U4_buf_perm, U4_buf, (1, 2, 3, 4, 5, 6, 8, 7))
     U4 .+= U4_buf_perm
 
-    quartic_fun(U4_buf, npt, bond, [q₂, q₁, q₄, q₃], [iq₂, iq₁, iq₄, iq₃], φas)
+    quartic_fun(U4_buf, npt, bond, (q₂, q₁, q₄, q₃), (iq₂, iq₁, iq₄, iq₃), φas)
     permutedims!(U4_buf_perm, U4_buf, (1, 2, 3, 4, 6, 5, 8, 7))
     U4 .+= U4_buf_perm
 
     return U4
 end
 
-function quartic_vertex_SUN(npt::NonPerturbativeTheory, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}})
+function quartic_vertex_SUN(npt::NonPerturbativeTheory, qs::NTuple{4, Vec3}, qs_indices::NTuple{4, CartesianIndex{3}})
     (; swt, real_space_quartic_vertices) = npt
     L = nbands(npt.swt)
     sys = swt.sys

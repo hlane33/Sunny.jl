@@ -1,4 +1,4 @@
-function φ3(qs::Vector{Vec3}, φas::NTuple{3, Int}, n)
+function φ3(qs::NTuple{3, Vec3}, φas::NTuple{3, Int}, n)
     ret = 1.0 + 0.0im
     for i in 1:3
         ret *= exp(2π*im * φas[i] * dot(qs[i], n))
@@ -6,20 +6,22 @@ function φ3(qs::Vector{Vec3}, φas::NTuple{3, Int}, n)
     return ret
 end
 
-function cubic_U31_SUN!(U31_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{3, Int})
+function cubic_U31_SUN!(U31_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}}, φas::NTuple{3, Int})
     U31_buf .= 0.0
     (; swt, Vps) = npt
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁, q₂, q₃ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
 
-    αs = [bond.i, bond.j]
+    αs = (bond.i, bond.j)
     α₁, α₂, α₃ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1]
 
-    phase1 = φ3([q₁, q₂, q₃], φas, bond.n)
-    phase2 = φ3([q₂, q₁, q₃], φas, bond.n)
-    phase3 = φ3([q₃, q₂, q₁], φas, bond.n)
+    phase1 = φ3((q₁, q₂, q₃), φas, bond.n)
+    phase2 = φ3((q₂, q₁, q₃), φas, bond.n)
+    phase3 = φ3((q₃, q₂, q₁), φas, bond.n)
 
     Vp1 = view(Vps, :, :, qs_indices[1])
     Vp2 = view(Vps, :, :, qs_indices[2])
@@ -32,20 +34,22 @@ function cubic_U31_SUN!(U31_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheor
     end
 end
 
-function cubic_U32_SUN!(U32_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{3, Int})
+function cubic_U32_SUN!(U32_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}}, φas::NTuple{3, Int})
     U32_buf .= 0.0
     (; swt, Vps) = npt
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁, q₂, q₃ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
 
-    αs = [bond.i, bond.j]
+    αs = (bond.i, bond.j)
     α₁, α₂, α₃ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1]
 
-    phase1 = φ3([q₁, q₂, q₃], φas, bond.n)
-    phase2 = φ3([q₂, q₁, q₃], φas, bond.n)
-    phase3 = φ3([q₃, q₂, q₁], φas, bond.n)
+    phase1 = φ3((q₁, q₂, q₃), φas, bond.n)
+    phase2 = φ3((q₂, q₁, q₃), φas, bond.n)
+    phase3 = φ3((q₃, q₂, q₁), φas, bond.n)
 
     Vp1 = view(Vps, :, :, qs_indices[1])
     Vp2 = view(Vps, :, :, qs_indices[2])
@@ -58,13 +62,17 @@ function cubic_U32_SUN!(U32_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheor
     end
 end
 
-function cubic_U3_symmetrized_SUN(cubic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{3, Int})
+function cubic_U3_symmetrized_SUN(cubic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}}, φas::NTuple{3, Int})
     swt = npt.swt
     N = swt.sys.Ns[1]
     nflavors = N - 1
     L = nbands(swt)
-    q₁, q₂, q₃ = view(qs, :)
-    iq₁, iq₂, iq₃ = qs_indices
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    iq₁ = qs_indices[1]
+    iq₂ = qs_indices[2]
+    iq₃ = qs_indices[3]
 
     U3 = zeros(ComplexF64, nflavors, nflavors, nflavors, L, L, L)
     U3_buf = zeros(ComplexF64, nflavors, nflavors, nflavors, L, L, L)
@@ -74,14 +82,14 @@ function cubic_U3_symmetrized_SUN(cubic_fun::Function, npt::NonPerturbativeTheor
     cubic_fun(U3_buf, npt, bond, qs, qs_indices, φas)
     U3 .+= U3_buf
 
-    cubic_fun(U3_buf, npt, bond, [q₁, q₃, q₂], [iq₁, iq₃, iq₂], φas)
+    cubic_fun(U3_buf, npt, bond, (q₁, q₃, q₂), (iq₁, iq₃, iq₂), φas)
     permutedims!(U3_buf_perm, U3_buf, (1, 2, 3, 4, 6, 5))
     U3 .+= U3_buf_perm
 
     return U3
 end
 
-function cubic_U31′_SUN!(U31_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U31′_SUN!(U31_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     U31_buf .= 0.0
     (; swt, Vps) = npt
     N = swt.sys.Ns[1]
@@ -99,7 +107,7 @@ function cubic_U31′_SUN!(U31_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTh
     end
 end
 
-function cubic_U32′_SUN!(U32_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U32′_SUN!(U32_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     U32_buf .= 0.0
     (; swt, Vps) = npt
     N = swt.sys.Ns[1]
@@ -117,7 +125,7 @@ function cubic_U32′_SUN!(U32_buf::Array{ComplexF64, 6}, npt::NonPerturbativeTh
     end
 end
 
-function cubic_U3′_symmetrized_SUN(cubic_fun::Function, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U3′_symmetrized_SUN(cubic_fun::Function, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     swt = npt.swt
     N = swt.sys.Ns[1]
     nflavors = N - 1
@@ -139,7 +147,7 @@ function cubic_U3′_symmetrized_SUN(cubic_fun::Function, npt::NonPerturbativeTh
     return U3
 end
 
-function cubic_vertex_SUN(npt::NonPerturbativeTheory, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}})
+function cubic_vertex_SUN(npt::NonPerturbativeTheory, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}})
     (; swt, real_space_cubic_vertices) = npt
     L = nbands(npt.swt)
     sys = swt.sys

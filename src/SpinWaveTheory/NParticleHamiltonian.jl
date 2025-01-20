@@ -47,7 +47,7 @@ function two_particle_hamiltonian!(H, npt::NonPerturbativeTheory, q_index::Carte
             k2 = qs[k2_index]
             qmk2 = mod.(q - k2, 1.0)
             qmk2_index = CartesianIndex(mod(q_index[1]-k2_index[1], Nu1)+1, mod(q_index[2]-k2_index[2], Nu2)+1, mod(q_index[3]-k2_index[3], Nu3)+1)
-            U4 .= quartic_vertex_fun(npt, [-k1, -qmk1, k2, qmk2], [k1_index, qmk1_index, k2_index, qmk2_index])
+            U4 .= quartic_vertex_fun(npt, (-k1, -qmk1, k2, qmk2), (k1_index, qmk1_index, k2_index, qmk2_index))
             for band1 in 1:L, band2 in 1:L, band3 in 1:L, band4 in 1:L
                 if haskey(dict_states, (k1_index, qmk1_index, band1, band2)) && haskey(dict_states, (k2_index, qmk2_index, band3, band4))
                     (com_1, ζij, i, j) = dict_states[(k1_index, qmk1_index, band1, band2)]
@@ -78,7 +78,7 @@ function one_to_two_particle_hamiltonian!(H, npt::NonPerturbativeTheory, q_index
         k = qs[k_index]
         qmk = mod.(q - k, 1.0)
         qmk_index = CartesianIndex(mod(q_index[1]-k_index[1], Nu1)+1, mod(q_index[2]-k_index[2], Nu2)+1, mod(q_index[3]-k_index[3], Nu3)+1)
-        U3 .= cubic_vertex_fun(npt, [-q, k, qmk], [q_index, k_index, qmk_index])
+        U3 .= cubic_vertex_fun(npt, (-q, k, qmk), (q_index, k_index, qmk_index))
         for band in 1:L, band1 in 1:L, band2 in 1:L
             if haskey(dict_states, (k_index, qmk_index, band1, band2))
                 (com, ζjk, _, _) = dict_states[(k_index, qmk_index, band1, band2)]

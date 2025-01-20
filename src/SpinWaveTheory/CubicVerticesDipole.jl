@@ -1,16 +1,18 @@
-function cubic_U31_dipole!(U31_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{3, Int})
+function cubic_U31_dipole!(U31_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}}, φas::NTuple{3, Int})
     U31_buf .= 0.0
     (; swt, Vps) = npt
 
     L = nbands(swt)
-    q₁, q₂, q₃ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
 
-    αs = [bond.i, bond.j]
+    αs = (bond.i, bond.j)
     α₁, α₂, α₃ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1]
 
-    phase1 = φ3([q₁, q₂, q₃], φas, bond.n)
-    phase2 = φ3([q₂, q₁, q₃], φas, bond.n)
-    phase3 = φ3([q₃, q₂, q₁], φas, bond.n)
+    phase1 = φ3((q₁, q₂, q₃), φas, bond.n)
+    phase2 = φ3((q₂, q₁, q₃), φas, bond.n)
+    phase3 = φ3((q₃, q₂, q₁), φas, bond.n)
 
     Vp1 = view(Vps, :, :, qs_indices[1])
     Vp2 = view(Vps, :, :, qs_indices[2])
@@ -23,18 +25,20 @@ function cubic_U31_dipole!(U31_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTh
     end
 end
 
-function cubic_U32_dipole!(U32_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{3, Int})
+function cubic_U32_dipole!(U32_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}}, φas::NTuple{3, Int})
     U32_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
-    q₁, q₂, q₃ = view(qs, :)
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
 
-    αs = [bond.i, bond.j]
+    αs = (bond.i, bond.j)
     α₁, α₂, α₃ = αs[φas[1]+1], αs[φas[2]+1], αs[φas[3]+1]
 
-    phase1 = φ3([q₁, q₂, q₃], φas, bond.n)
-    phase2 = φ3([q₂, q₁, q₃], φas, bond.n)
-    phase3 = φ3([q₃, q₂, q₁], φas, bond.n)
+    phase1 = φ3((q₁, q₂, q₃), φas, bond.n)
+    phase2 = φ3((q₂, q₁, q₃), φas, bond.n)
+    phase3 = φ3((q₃, q₂, q₁), φas, bond.n)
 
     Vp1 = view(Vps, :, :, qs_indices[1])
     Vp2 = view(Vps, :, :, qs_indices[2])
@@ -47,11 +51,15 @@ function cubic_U32_dipole!(U32_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTh
     end
 end
 
-function cubic_U3_symmetrized_dipole(cubic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}}, φas::NTuple{3, Int})
+function cubic_U3_symmetrized_dipole(cubic_fun::Function, npt::NonPerturbativeTheory, bond::Bond, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}}, φas::NTuple{3, Int})
     swt = npt.swt
     L = nbands(swt)
-    q₁, q₂, q₃ = view(qs, :)
-    iq₁, iq₂, iq₃ = qs_indices
+    q₁ = qs[1]
+    q₂ = qs[2]
+    q₃ = qs[3]
+    iq₁ = qs_indices[1]
+    iq₂ = qs_indices[2]
+    iq₃ = qs_indices[3]
 
     U3 = zeros(ComplexF64, L, L, L)
     U3_buf = zeros(ComplexF64, L, L, L)
@@ -61,14 +69,14 @@ function cubic_U3_symmetrized_dipole(cubic_fun::Function, npt::NonPerturbativeTh
     cubic_fun(U3_buf, npt, bond, qs, qs_indices, φas)
     U3 .+= U3_buf
 
-    cubic_fun(U3_buf, npt, bond, [q₁, q₃, q₂], [iq₁, iq₃, iq₂], φas)
+    cubic_fun(U3_buf, npt, bond, (q₁, q₃, q₂), (iq₁, iq₃, iq₂), φas)
     permutedims!(U3_buf_perm, U3_buf, (1, 3, 2))
     U3 .+= U3_buf_perm
 
     return U3
 end
 
-function cubic_U31′_dipole!(U31_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U31′_dipole!(U31_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     U31_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
@@ -84,7 +92,7 @@ function cubic_U31′_dipole!(U31_buf::Array{ComplexF64, 3}, npt::NonPerturbativ
     end
 end
 
-function cubic_U32′_dipole!(U32_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U32′_dipole!(U32_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     U32_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
@@ -100,7 +108,7 @@ function cubic_U32′_dipole!(U32_buf::Array{ComplexF64, 3}, npt::NonPerturbativ
     end
 end
 
-function cubic_U33′_dipole!(U33_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U33′_dipole!(U33_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     U33_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
@@ -117,7 +125,7 @@ function cubic_U33′_dipole!(U33_buf::Array{ComplexF64, 3}, npt::NonPerturbativ
 end
 
 
-function cubic_U34′_dipole!(U34_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U34′_dipole!(U34_buf::Array{ComplexF64, 3}, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     U34_buf .= 0.0
     (; swt, Vps) = npt
     L = nbands(swt)
@@ -133,10 +141,12 @@ function cubic_U34′_dipole!(U34_buf::Array{ComplexF64, 3}, npt::NonPerturbativ
     end
 end
 
-function cubic_U3′_symmetrized_dipole(cubic_fun::Function, npt::NonPerturbativeTheory, qs_indices::Vector{CartesianIndex{3}}, α::Int)
+function cubic_U3′_symmetrized_dipole(cubic_fun::Function, npt::NonPerturbativeTheory, qs_indices::NTuple{3, CartesianIndex{3}}, α::Int)
     swt = npt.swt
     L = nbands(swt)
-    iq₁, iq₂, iq₃ = qs_indices
+    iq₁ = qs_indices[1]
+    iq₂ = qs_indices[2]
+    iq₃ = qs_indices[3]
 
     U3 = zeros(ComplexF64, L, L, L)
     U3_buf = zeros(ComplexF64, L, L, L)
@@ -146,14 +156,14 @@ function cubic_U3′_symmetrized_dipole(cubic_fun::Function, npt::NonPerturbativ
     cubic_fun(U3_buf, npt, qs_indices, α)
     U3 .+= U3_buf
 
-    cubic_fun(U3_buf, npt, [iq₁, iq₃, iq₂], α)
+    cubic_fun(U3_buf, npt, (iq₁, iq₃, iq₂), α)
     permutedims!(U3_buf_perm, U3_buf, (1, 3, 2))
     U3 .+= U3_buf_perm
 
     return U3
 end
 
-function cubic_vertex_dipole(npt::NonPerturbativeTheory, qs::Vector{Vec3}, qs_indices::Vector{CartesianIndex{3}})
+function cubic_vertex_dipole(npt::NonPerturbativeTheory, qs::NTuple{3, Vec3}, qs_indices::NTuple{3, CartesianIndex{3}})
     (; swt, real_space_cubic_vertices) = npt
     (; sys, data) = swt
     (; stevens_coefs) = data 
