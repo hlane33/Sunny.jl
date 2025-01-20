@@ -13,9 +13,10 @@ from the two-particle continuum contribution,
 reciprocal lattice vectors.
 """
 function dssf_free_two_particle_continuum(swt::SpinWaveTheory, q, ωs, η::Float64; opts...)
-    (; sys, data, observables) = swt
-    (; observable_operators) = data
+    (; sys, data) = swt
+    (; observables_localized) = data
     q_reshaped = to_reshaped_rlu(swt.sys, q)
+    kernel = lorentzian(fwhm=η)
 
     # Number of atoms in magnetic cell
     Nm = length(sys.dipoles)
@@ -28,8 +29,7 @@ function dssf_free_two_particle_continuum(swt::SpinWaveTheory, q, ωs, η::Float
 
     # Get some integer numbers for later use
     numωs = length(ωs)
-    num_obs = num_observables(observables)
-    num_corrs = num_correlations(observables)
+    num_obs = num_observables(swt.measure)
 
     # Preallocation
     # H1, V1 for q+k
@@ -72,8 +72,8 @@ function dssf_free_two_particle_continuum(swt::SpinWaveTheory, q, ωs, η::Float
                 for band2 = 1:L
                     v2 = reshape(view(V2, :, band2), N-1, Nm, 2)
                     for i = 1:Nm
-                        for μ = 1:num_observables(observables)
-                            @views O = observable_operators[:, :, μ, i]
+                        for μ = 1:num_obs
+                            @views O = observables_localized[μ, i]
                             for α = 1:N-1
                                 for β = 1:N-1
                                     Avec[μ, band1, band2] += Avec_pref[i] * (O[α, β] - δ(α, β) * O[N, N]) * (v1[α, i, 2]*v2[β, i, 1] + v1[β, i, 1]*v2[α, i, 2])
@@ -90,9 +90,9 @@ function dssf_free_two_particle_continuum(swt::SpinWaveTheory, q, ωs, η::Float
                 for band2 = 1:L
                     v2 = reshape(view(V2, :, band2), Nm, 2)
                     for i = 1:Nm
-                        for μ = 1:num_observables(observables)
-                            @views O = observable_operators[:, :, μ, i]
-                            Avec[μ, band1, band2] += Avec_pref[i] * O[1, 3] * (v1[i, 2]*v2[i, 1] + v1[i, 1]*v2[i, 2])
+                        for μ = 1:num_obs
+                            @views O = observables_operators[μ, i]
+                            Avec[μ, band1, band2] += Avec_pref[i] * O[3] * (v1[i, 2]*v2[i, 1] + v1[i, 1]*v2[i, 2])
                         end
                     end
                 end
@@ -104,7 +104,7 @@ function dssf_free_two_particle_continuum(swt::SpinWaveTheory, q, ωs, η::Float
                 (α, β) = ci.I
                 for band1 = 1:L
                     for band2 = 1:L
-                        corrs_buf[(iω-1)*num_corrs+i] += Avec[α, band1, band2] * conj(Avec[β, band1, band2]) * lorentzian(ω-disp1[band1]-disp2[band2], η) / Ncells
+                        corrs_buf[(iω-1)*num_corrs+i] += Avec[α, band1, band2] * conj(Avec[β, band1, band2]) * kernel(disp1[band1]+disp2[band2], ω) / Ncells
                     end
                 end
             end
@@ -120,9 +120,10 @@ end
     `α`, `β` are the indices of the observables
 """
 function dssf_free_two_particle_continuum_component(swt::SpinWaveTheory, q, ωs, η::Float64, α::Int, β::Int; opts...)
-    (; sys, data, observables) = swt
-    (; observable_operators) = data
+    (; sys, data) = swt
+    (; observables_localized) = data
     q_reshaped = to_reshaped_rlu(swt.sys, q)
+    kernel = lorentzian(fwhm=η)
 
     # Number of atoms in magnetic cell
     Nm = length(sys.dipoles)
@@ -135,7 +136,7 @@ function dssf_free_two_particle_continuum_component(swt::SpinWaveTheory, q, ωs,
 
     # Get some integer numbers for later use
     numωs = length(ωs)
-    num_obs = num_observables(observables)
+    num_obs = num_observables(swt.measure)
 
     # Preallocation
     # H1, V1 for q+k
@@ -178,8 +179,8 @@ function dssf_free_two_particle_continuum_component(swt::SpinWaveTheory, q, ωs,
                 for band2 = 1:L
                     v2 = reshape(view(V2, :, band2), N-1, Nm, 2)
                     for i = 1:Nm
-                        for μ = 1:num_observables(observables)
-                            @views O = observable_operators[:, :, μ, i]
+                        for μ = 1:num_obs
+                            @views O = observables_localized[μ, i]
                             for α = 1:N-1
                                 for β = 1:N-1
                                     Avec[μ, band1, band2] += Avec_pref[i] * (O[α, β] - δ(α, β) * O[N, N]) * (v1[α, i, 2]*v2[β, i, 1] + v1[β, i, 1]*v2[α, i, 2])
@@ -196,9 +197,9 @@ function dssf_free_two_particle_continuum_component(swt::SpinWaveTheory, q, ωs,
                 for band2 = 1:L
                     v2 = reshape(view(V2, :, band2), Nm, 2)
                     for i = 1:Nm
-                        for μ = 1:num_observables(observables)
-                            @views O = observable_operators[:, :, μ, i]
-                            Avec[μ, band1, band2] += Avec_pref[i] * O[1, 3] * (v1[i, 2]*v2[i, 1] + v1[i, 1]*v2[i, 2])
+                        for μ = 1:num_obs
+                            @views O = observables_localized[μ, i]
+                            Avec[μ, band1, band2] += Avec_pref[i] * O[3] * (v1[i, 2]*v2[i, 1] + v1[i, 1]*v2[i, 2])
                         end
                     end
                 end
@@ -208,7 +209,7 @@ function dssf_free_two_particle_continuum_component(swt::SpinWaveTheory, q, ωs,
         for (iω, ω) in enumerate(ωs)
             for band1 = 1:L
                 for band2 = 1:L
-                    corrs_buf[iω] += Avec[α, band1, band2] * conj(Avec[β, band1, band2]) * lorentzian(ω-disp1[band1]-disp2[band2], η) / Ncells
+                    corrs_buf[iω] += Avec[α, band1, band2] * conj(Avec[β, band1, band2]) * kernel(disp1[band1]+disp2[band2], ω) / Ncells
                 end
             end
         end
