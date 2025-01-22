@@ -46,7 +46,7 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
         A = precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB²
         A = reshape(A, Na, Na)
         for i in 1:Na, j in 1:Na
-            J_k[:, i, :, j] += gs[i]' * A[i, j] * gs[j] / 2
+            J_k[:, i, :, j] += sys.gs[i]' * A[i, j] * sys.gs[j] / 2
         end
     end
     J_k = 2J_k # I'm not so sure why we need this
@@ -167,3 +167,42 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
 
+
+function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
+    if SumRule == "Classical"
+        S_sq = vec(sys.κs.^2)
+    elseif SumRule == "Quantum"
+        S_sq =vec( sys.κs .* (sys.κs .+ 1))
+    else
+        error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
+    end
+    Na = Sunny.natoms(sys.crystal)
+    Nq = 8
+    dq = 1/Nq;
+    qarray = -0.5: dq : 0.5-dq
+    N = length(qarray)
+    q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
+    Λ =  diagm(repeat(λs, inner=3))
+    A_array = [kT*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  kT*Λ for q_in ∈ q] 
+    eig_vals = zeros(3Na,length(A_array))
+    for j in 1:length(A_array)
+         eig_vals[:,j] .= eigvals(A_array[j])
+    end
+    if minimum(eig_vals) < 0 
+        F =  -Inf
+    else
+        F =  0.5*kT*sum(log.(eig_vals))
+    end
+    G = F - 0.5*N*sum(λs.*S_sq)
+    # gradient 
+    gradF = zeros(ComplexF64,Na)
+    for i ∈ 1:Na
+        gradλ =diagm(zeros(ComplexF64,3Na))
+        gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
+        gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array]) 
+        # replace this -> we want to use eigenvalues determined above and invariance of trace under change of basis Tr(A (dΛ/dλ) )= Tr(U'AUU'(dΛ/dλ)U) = Tr(D U'(dΛ/dλ)U)  
+    end
+    gradG = gradF -0.5*N*S_sq
+    # return G, gradG
+    return G
+end
