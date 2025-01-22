@@ -167,7 +167,7 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
 
-
+#=
 function fourier_transform_deprecated(sys::System; k, ϵ=0)
     @assert sys.mode in (:dipole, :dipole_large_S) "SU(N) mode not supported"
     @assert sys.latsize == (1, 1, 1) "System must have only a single cell"
