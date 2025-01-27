@@ -10,7 +10,7 @@ import FFTW
 import DynamicPolynomials as DP
 import Printf: Printf, @printf, @sprintf
 import Random: Random, randn!
-import Optim: Optim, NelderMead, optimize
+import Optim: Optim, NelderMead, optimize, ConjugateGradient
 import JLD2
 import HCubature: hcubature
 

@@ -200,7 +200,7 @@ function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
         gradλ =diagm(zeros(ComplexF64,3Na))
         gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
         # gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array])
-        gradF[i] =0.5kT*sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
+        gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
         # replace this -> we want to use eigenvalues determined above and invariance of trace under change of basis Tr(A (dΛ/dλ) )= Tr(U'A⁻¹UU'(dΛ/dλ)U) = Tr(D⁻¹U'(dΛ/dλ)U)  
     end
     gradG = gradF -0.5*N*S_sq
@@ -208,7 +208,7 @@ function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
 end
 
 
-function find_lagrange_multiplier_opt(sys,λs,kT;SumRule = "Quantum")
+function find_lagrange_multiplier_opt_slow(sys,λs,kT;SumRule = "Quantum")
     if SumRule == "Classical"
         S_sq = vec(sys.κs.^2)
     elseif SumRule == "Quantum"
@@ -220,33 +220,52 @@ function find_lagrange_multiplier_opt(sys,λs,kT;SumRule = "Quantum")
     Nq = 8
     dq = 1/Nq;
     qarray = -0.5: dq : 0.5-dq
-    N = length(qarray)
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
-    Λ =  diagm(repeat(λs, inner=3))
-    A_array = [kT*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  kT*Λ for q_in ∈ q] 
-    eig_vals = zeros(3Na,length(A_array))
-    Us = zeros(ComplexF64,3Na,3Na,length(A_array))
-    for j in 1:length(A_array)
-        T = eigen(A_array[j])
-        eig_vals[:,j] .= T.values
-        Us[:,:,j] .= T.vectors
+    N = length(q)
+    function f(λs)
+        Λ =  diagm(repeat(λs, inner=3))
+        A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
+        eig_vals = zeros(3Na,length(A_array))
+        Us = zeros(ComplexF64,3Na,3Na,length(A_array))
+        for j in 1:length(A_array)
+            T = eigen(A_array[j])
+            eig_vals[:,j] .= T.values
+            Us[:,:,j] .= T.vectors
+        end
+        if minimum(eig_vals) < 0 
+            F =  -Inf
+        else
+            F =  0.5*kT*sum(log.(eig_vals))
+        end
+        G = F - 0.5*N*sum(λs.*S_sq)
+        return -G
     end
-
-    if minimum(eig_vals) < 0 
-        F =  -Inf
-    else
-        F =  0.5*kT*sum(log.(eig_vals))
-    end
-    G = F - 0.5*N*sum(λs.*S_sq)
+    function g!(storage,λs)
     # gradient 
-    gradF = zeros(ComplexF64,Na)
-    for i ∈ 1:Na
-        gradλ =diagm(zeros(ComplexF64,3Na))
-        gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
-        # gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array])
-        gradF[i] =0.5kT*sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
-        # replace this -> we want to use eigenvalues determined above and invariance of trace under change of basis Tr(A (dΛ/dλ) )= Tr(U'A⁻¹UU'(dΛ/dλ)U) = Tr(D⁻¹U'(dΛ/dλ)U)  
+        Λ =  diagm(repeat(λs, inner=3))
+        A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
+        eig_vals = zeros(3Na,length(A_array))
+        Us = zeros(ComplexF64,3Na,3Na,length(A_array))
+        for j in 1:length(A_array)
+            T = eigen(A_array[j])
+            eig_vals[:,j] .= T.values
+            Us[:,:,j] .= T.vectors
+        end
+        gradF = zeros(ComplexF64,Na)
+        for i ∈ 1:Na
+            gradλ =diagm(zeros(ComplexF64,3Na))
+            gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
+            # gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array])
+            gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
+            # replace this -> we want to use eigenvalues determined above and invariance of trace under change of basis Tr(A (dΛ/dλ) )= Tr(U'A⁻¹UU'(dΛ/dλ)U) = Tr(D⁻¹U'(dΛ/dλ)U)  
+        end
+        gradG = gradF -0.5*N*S_sq
+        storage .= -real(gradG)
     end
-    gradG = gradF -0.5*N*S_sq
-    return G, gradG
+    upper = Inf
+    lower = -Inf
+    options = Optim.Options(; iterations=5000, show_trace=false,g_tol=1e-8)
+    result = optimize(f, g!,λs , ConjugateGradient(),options)
+    min = Optim.minimizer(result)
+    return min
 end
