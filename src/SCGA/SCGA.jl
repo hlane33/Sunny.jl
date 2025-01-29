@@ -265,7 +265,7 @@ function find_lagrange_multiplier_opt_slow(sys,λs,kT;SumRule = "Quantum",method
         end
         upper = Inf
         lower = -Inf
-        options = Optim.Options(; iterations=5000, show_trace=false,g_tol=1e-8)
+        options = Optim.Options(; iterations=maxiters, show_trace=true,g_tol=1e-8)
         result = optimize(f, g!,λs , ConjugateGradient(),options)
         min = Optim.minimizer(result)
     elseif method == "Newton's Method"
