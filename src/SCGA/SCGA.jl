@@ -168,6 +168,50 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
 end
 
 
+function intensities_static_sublattice(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7,λs_init)
+    kT == 0.0 && error("kT must be non-zero")
+    qpts = convert(AbstractQPoints, qpts)
+    (; sys, measure, regularization) = scga
+    Na = natoms(sys.crystal)
+    Nq = length(qpts.qs)
+    Nobs = num_observables(measure)
+    λs = find_lagrange_multiplier_opt_slow(sys,λs_init,kT;SumRule,maxiters)
+    intensity = zeros(eltype(measure),Nq)
+    Ncorr = length(measure.corr_pairs)
+    for (iq, q) in enumerate(qpts.qs)
+        pref = zeros(ComplexF64, Nobs, Na)
+        corrbuf = zeros(ComplexF64, Ncorr)
+        intensitybuf = zeros(eltype(measure),3,3)
+        q_reshaped = to_reshaped_rlu(sys, q)
+        q_global = sys.crystal.recipvecs * q
+        for i in 1:Na
+            for μ in 1:3
+                ff = get_swt_formfactor(measure, μ, i)
+                pref[μ, i] = compute_form_factor(ff, norm2(q_global))
+            end
+        end
+        J_mat = fourier_transform_interaction_matrix(sys; k=q_reshaped, ϵ=regularization)
+        Λ =  diagm(repeat(λs, inner=3))
+        inverted_matrix = (inv(Λ + (1/kT)*J_mat)) # this is [(Iλ+J(q))^-1]^αβ_μν
+        for i ∈ 1:Na 
+            for j ∈ 1:Na 
+                intensitybuf += pref[1,i]*conj(pref[1,j])*inverted_matrix[1+3(i-1):3+3(i-1),1+3(j-1):3+3(j-1)] 
+                # TODO allow different form factor for each observable 
+            end
+        end
+        map!(corrbuf, measure.corr_pairs) do (α, β)
+            intensitybuf[α,β]
+        end
+        intensity[iq] = measure.combiner(q_global, corrbuf)
+    end
+    if extrema(intensity)[1] < -1e-2
+        @warn "Warning: negative intensities! kT is probably below the ordering temperature."
+        # TODO Throw an error. This is for diagnostic purposes.
+    end
+    println("Optimized Lagrange multipliers: $λs")
+    return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
+end
+
 function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
     if SumRule == "Classical"
         S_sq = vec(sys.κs.^2)
