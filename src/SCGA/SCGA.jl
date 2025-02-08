@@ -23,6 +23,14 @@ function SCGA(sys::System; measure::Union{Nothing, MeasureSpec}, regularization=
     return SCGA(sys,measure, regularization)
 end
 
+"""
+    fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
+
+Fourier transforms the interaaction matrix for a System and evaluatues it at q=k. A 
+small regularization, ϵ, can be added. This function is adapted from 
+`luttinger_tisza_exchange`](@ref) to include the correct prefactors and local anisotropies.
+
+"""
 
 function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
     @assert sys.mode in (:dipole, :dipole_large_S) "SU(N) mode not supported"
@@ -65,6 +73,16 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
     return J_k 
 end
 
+"""
+    find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead")
+
+Computes the Lagrange multiplier for the standard SCGA approach with a common Lagrange multiplier 
+for all sublattices. Two optimization methods can be chosen, "Nelder Mead" which takes advantage 
+of the implementation in Optim.jl and "Newton's Method" which is a fast converging root finding
+algorithm. SumRule specifices the sum rule that the Lagrange multipliers are chosen to satisfy, 
+either the Classical or Quantum sum rules.
+
+"""
 
 function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead")
     Nq = 8
@@ -125,6 +143,14 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
     return min
 end
 
+"""
+     intensities_static_single(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7)
+
+Computes the static structure factor in the standard SCGA approach, with a single
+Lagrange multiplier, over the qpts specified. 
+
+"""
+
 function intensities_static_single(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7)
     kT == 0.0 && error("kT must be non-zero")
     qpts = convert(AbstractQPoints, qpts)
@@ -167,6 +193,12 @@ function intensities_static_single(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum"
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
 
+"""
+     intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,λs_init)
+
+Computes the static structure factor in the sublattice resolved SCGA method, over the 
+qpts specified.
+"""
 
 function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,λs_init)
     kT == 0.0 && error("kT must be non-zero")
@@ -213,6 +245,14 @@ function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quan
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
 
+"""
+     intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,method="Newton's Method",λs_init=nothing,sublattice_resolved = false)
+
+Computes the static structure factor. The sublattice resolved method can be chosen by selecting
+sublattice_resolved = true. 
+"""
+
+
 function intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,method="Newton's Method",λs_init=nothing,sublattice_resolved = false)
     if sublattice_resolved == true
         return intensities_static_sublattice(scga::SCGA, qpts; kT, SumRule , maxiters,tol,λs_init)
@@ -221,6 +261,13 @@ function intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxit
     end
 end
 
+"""
+    find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",maxiters=500,tol=1e-10)
+
+Computes the Lagrange multiplier for the sublattice resolved SCGA method. The optimization is performed
+using the Conjugate Gradient method as implemented in Optim.jl.
+
+"""
 
 function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",maxiters=500,tol=1e-10)
     if SumRule == "Classical"
@@ -254,7 +301,7 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
         G = F - 0.5*N*sum(λs.*S_sq)
         return -G
     end
-    function g!(storage,λs)
+    function fg!(fbuffer,gbuffer,λs)
         Λ =  diagm(repeat(λs, inner=3))
         A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
         eig_vals = zeros(3Na,length(A_array))
@@ -264,15 +311,25 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
             eig_vals[:,j] .= T.values
             Us[:,:,j] .= T.vectors
         end
-        gradF = zeros(ComplexF64,Na)
-        for i ∈ 1:Na
-            gradλ =diagm(zeros(ComplexF64,3Na))
-            gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
-            # gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array])
-            gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
+        if gbuffer !== nothing
+            gradF = zeros(ComplexF64,Na)
+            for i ∈ 1:Na
+                gradλ =diagm(zeros(ComplexF64,3Na))
+                gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
+                gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
+            end
+            gradG = gradF -0.5*N*S_sq
+            gbuffer .= -real(gradG)
         end
-        gradG = gradF -0.5*N*S_sq
-        storage .= -real(gradG)
+        if fbuffer !== nothing
+            if minimum(eig_vals) < 0 
+                F =  -Inf
+            else
+                F =  0.5*kT*sum(log.(eig_vals))
+            end
+            G = F - 0.5*N*sum(λs.*S_sq)
+            fbuffer= -G
+        end
     end
     if λs == nothing
         println("No user provided initial guess for the Lagrange multipliers. Determining a sensible starting point from the interaction matrix.")
@@ -315,13 +372,10 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
     upper = Inf
     lower = -Inf
     options = Optim.Options(; iterations=maxiters, show_trace=true,g_tol=tol)
-    result = optimize(f, g!,λs , ConjugateGradient(),options)
+    result = optimize(Optim.only_fg!(fg!), λs, ConjugateGradient(),options)
     min = Optim.minimizer(result)
     return real.(min)
 end
-
-#######################################################
-#######################################################
 
 function find_lagrange_multiplier_opt_WORKING(sys,λs,kT;SumRule = "Quantum",method = "ConjugateGradient",maxiters=500,tol=1e-10)
     if SumRule == "Classical"
