@@ -125,7 +125,7 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
     return min
 end
 
-function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7)
+function intensities_static_single(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7)
     kT == 0.0 && error("kT must be non-zero")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
@@ -168,14 +168,15 @@ function intensities_static(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRu
 end
 
 
-function intensities_static_sublattice(scga::SCGA, qpts; formfactors=nothing, kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7,λs_init)
+function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,λs_init)
     kT == 0.0 && error("kT must be non-zero")
+    println("Sublattice resolved SCGA currently only supports Conjugate Gradient optimization.")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
     Na = natoms(sys.crystal)
     Nq = length(qpts.qs)
     Nobs = num_observables(measure)
-    λs = find_lagrange_multiplier_opt_slow(sys,λs_init,kT;SumRule,maxiters)
+    λs = find_lagrange_multiplier_opt_sublattice(sys,λs_init,kT;SumRule,maxiters,tol)
     intensity = zeros(eltype(measure),Nq)
     Ncorr = length(measure.corr_pairs)
     for (iq, q) in enumerate(qpts.qs)
@@ -212,7 +213,16 @@ function intensities_static_sublattice(scga::SCGA, qpts; formfactors=nothing, kT
     return StaticIntensities(sys.crystal, qpts, reshape(intensity,size(qpts.qs)))
 end
 
-function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
+function intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,method="Newton's Method",λs_init=nothing,sublattice_resolved = false)
+    if sublattice_resolved == true
+        return intensities_static_sublattice(scga::SCGA, qpts; kT, SumRule , maxiters,tol,λs_init)
+    else
+        return intensities_static_single(scga::SCGA, qpts; kT, SumRule ,starting_offset = 0.2, maxiters,method,tol)
+    end
+end
+
+
+function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",maxiters=500,tol=1e-10)
     if SumRule == "Classical"
         S_sq = vec(sys.κs.^2)
     elseif SumRule == "Quantum"
@@ -224,35 +234,96 @@ function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
     Nq = 8
     dq = 1/Nq;
     qarray = -0.5: dq : 0.5-dq
-    N = length(qarray)
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
-    Λ =  diagm(repeat(λs, inner=3))
-    A_array = [kT*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  kT*Λ for q_in ∈ q] 
-    eig_vals = zeros(3Na,length(A_array))
-    for j in 1:length(A_array)
-         eig_vals[:,j] .= eigvals(A_array[j])
+    N = length(q)
+    function f(λs)
+        Λ =  diagm(repeat(λs, inner=3))
+        A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
+        eig_vals = zeros(3Na,length(A_array))
+        Us = zeros(ComplexF64,3Na,3Na,length(A_array))
+        for j in 1:length(A_array)
+            T = eigen(A_array[j])
+            eig_vals[:,j] .= T.values
+            Us[:,:,j] .= T.vectors
+        end
+        if minimum(eig_vals) < 0 
+            F =  -Inf
+        else
+            F =  0.5*kT*sum(log.(eig_vals))
+        end
+        G = F - 0.5*N*sum(λs.*S_sq)
+        return -G
     end
-    if minimum(eig_vals) < 0 
-        F =  -Inf
+    function g!(storage,λs)
+        Λ =  diagm(repeat(λs, inner=3))
+        A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
+        eig_vals = zeros(3Na,length(A_array))
+        Us = zeros(ComplexF64,3Na,3Na,length(A_array))
+        for j in 1:length(A_array)
+            T = eigen(A_array[j])
+            eig_vals[:,j] .= T.values
+            Us[:,:,j] .= T.vectors
+        end
+        gradF = zeros(ComplexF64,Na)
+        for i ∈ 1:Na
+            gradλ =diagm(zeros(ComplexF64,3Na))
+            gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
+            # gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array])
+            gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
+        end
+        gradG = gradF -0.5*N*S_sq
+        storage .= -real(gradG)
+    end
+    if λs == nothing
+        println("No user provided initial guess for the Lagrange multipliers. Determining a sensible starting point from the interaction matrix.")
+        A_array = [Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0)  for q_in ∈ q] 
+        eig_vals = zeros(3Na,length(A_array))
+        Us = zeros(ComplexF64,3Na,3Na,length(A_array))
+        for j in 1:length(A_array)
+            T = eigen(A_array[j])
+            eig_vals[:,j] .= T.values
+            Us[:,:,j] .= T.vectors
+        end
+        extreme_eigvals = extrema(eig_vals)
+        if extreme_eigvals[1] < 0
+            pos_shift = -extreme_eigvals[1]
+        else
+            pos_shift = 0
+        end
+        λ_init = pos_shift + (extreme_eigvals[2]-extreme_eigvals[1])/2
+        λs = λ_init*ones(Float64,Na)
     else
-        F =  0.5*kT*sum(log.(eig_vals))
+        println("Using user provided initial starting point for the optimization of the Lagrange multipliers.")
+        if f(λs) > 1e7
+            println("Matrix is not positive definite. Shifting Lagrange multipliers to find a better starting point.")
+            A_array = [Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0)  for q_in ∈ q] 
+            eig_vals = zeros(3Na,length(A_array))
+            Us = zeros(ComplexF64,3Na,3Na,length(A_array))
+            for j in 1:length(A_array)
+                T = eigen(A_array[j])
+                eig_vals[:,j] .= T.values
+                Us[:,:,j] .= T.vectors
+            end
+            extreme_eigvals = extrema(eig_vals)
+            shift = (extreme_eigvals[2] - extreme_eigvals[1])/2
+            while f(λs) > 1e7
+                λs += shift*ones(Float64,Na)
+            end
+        end
     end
-    G = F - 0.5*N*sum(λs.*S_sq)
-    # gradient 
-    gradF = zeros(ComplexF64,Na)
-    for i ∈ 1:Na
-        gradλ =diagm(zeros(ComplexF64,3Na))
-        gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
-        # gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array])
-        gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
-        # replace this -> we want to use eigenvalues determined above and invariance of trace under change of basis Tr(A (dΛ/dλ) )= Tr(U'A⁻¹UU'(dΛ/dλ)U) = Tr(D⁻¹U'(dΛ/dλ)U)  
-    end
-    gradG = gradF -0.5*N*S_sq
-    return G, gradG
+    println(λs)
+    upper = Inf
+    lower = -Inf
+    options = Optim.Options(; iterations=maxiters, show_trace=true,g_tol=tol)
+    result = optimize(f, g!,λs , ConjugateGradient(),options)
+    min = Optim.minimizer(result)
+    return real.(min)
 end
 
+#######################################################
+#######################################################
 
-function find_lagrange_multiplier_opt_slow(sys,λs,kT;SumRule = "Quantum",method = "ConjugateGradient",maxiters=500,tol=1e-10)
+function find_lagrange_multiplier_opt_WORKING(sys,λs,kT;SumRule = "Quantum",method = "ConjugateGradient",maxiters=500,tol=1e-10)
     if SumRule == "Classical"
         S_sq = vec(sys.κs.^2)
     elseif SumRule == "Quantum"
@@ -377,104 +448,41 @@ function find_lagrange_multiplier_opt_slow(sys,λs,kT;SumRule = "Quantum",method
     return real.(min)
 end
 
-function G_fun(sys,λs,kT;)
-    S_sq = vec(sys.κs.^2)
+function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
+    if SumRule == "Classical"
+        S_sq = vec(sys.κs.^2)
+    elseif SumRule == "Quantum"
+        S_sq =vec( sys.κs .* (sys.κs .+ 1))
+    else
+        error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
+    end
     Na = Sunny.natoms(sys.crystal)
     Nq = 8
     dq = 1/Nq;
     qarray = -0.5: dq : 0.5-dq
+    N = length(qarray)
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
-    N = length(q)
-    function precalculate_matrices(λs)
-        Λ =  diagm(repeat(λs, inner=3))
-        A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) +  (1/kT)*Λ for q_in ∈ q] 
-        eig_vals = zeros(Float64,3Na,length(A_array))
-        Us = zeros(ComplexF64,3Na,3Na,length(A_array))
-        for j in 1:length(A_array)
-            T = eigen(A_array[j])
-            eig_vals[:,j] .= T.values
-            Us[:,:,j] .= T.vectors
-        end
-        return eig_vals, Us, A_array
+    Λ =  diagm(repeat(λs, inner=3))
+    A_array = [kT*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  kT*Λ for q_in ∈ q] 
+    eig_vals = zeros(3Na,length(A_array))
+    for j in 1:length(A_array)
+         eig_vals[:,j] .= eigvals(A_array[j])
     end
-    function G(λs,eig_vals)
-        if minimum(eig_vals) < 0 
-            F =  -10^9
-        else
-            F =  0.5*kT*sum(log.(eig_vals))
-        end
-        Gout = F - 0.5*N*sum(λs.*S_sq)
-        return -real.(Gout)
+    if minimum(eig_vals) < 0 
+        F =  -Inf
+    else
+        F =  0.5*kT*sum(log.(eig_vals))
     end
-    eig_vals, Us, A_array =  precalculate_matrices(λs)
-    return G(λs,eig_vals)
-end
-
-function find_lagrange_multiplier_print(sys,λs,kT;maxiters=500)
-    S_sq = vec(sys.κs.^2)
-    Na = Sunny.natoms(sys.crystal)
-    Nq = 8
-    dq = 1/Nq;
-    qarray = -0.5: dq : 0.5-dq
-    q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
-    N = length(q)
-    function precalculate_matrices(λs)
-        Λ =  diagm(repeat(λs, inner=3))
-        A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) +  (1/kT)*Λ for q_in ∈ q] 
-        eig_vals = zeros(Float64,3Na,length(A_array))
-        Us = zeros(ComplexF64,3Na,3Na,length(A_array))
-        for j in 1:length(A_array)
-            T = eigen(A_array[j])
-            eig_vals[:,j] .= T.values
-            Us[:,:,j] .= T.vectors
-        end
-        return eig_vals, Us, A_array
+    G = F - 0.5*N*sum(λs.*S_sq)
+    # gradient 
+    gradF = zeros(ComplexF64,Na)
+    for i ∈ 1:Na
+        gradλ =diagm(zeros(ComplexF64,3Na))
+        gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
+        # gradF[i] =0.5kT*sum([tr(inv(A) * gradλ) for A ∈ A_array])
+        gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:length(A_array)]) 
+        # replace this -> we want to use eigenvalues determined above and invariance of trace under change of basis Tr(A (dΛ/dλ) )= Tr(U'A⁻¹UU'(dΛ/dλ)U) = Tr(D⁻¹U'(dΛ/dλ)U)  
     end
-    function G(λs,eig_vals)
-        if minimum(eig_vals) < 0 
-            F =  -10^9
-        else
-            F =  0.5*kT*sum(log.(eig_vals))
-        end
-        Gout = F - 0.5*N*sum(λs.*S_sq)
-        return -real.(Gout)
-    end
-    function Gp(eig_vals, Us) 
-        gradF = zeros(ComplexF64,Na)
-        for i ∈ 1:Na
-            gradλ =diagm(zeros(ComplexF64,3Na))
-            gradλ[3i-2:3i,3i-2:3i] =diagm([1,1,1])
-            gradF[i] =0.5sum([tr(diagm(1 ./eig_vals[:,j]) * Us[:,:,j]'*gradλ*Us[:,:,j]) for j ∈ 1:size(eig_vals,2)]) 
-        end
-        gradG = gradF -0.5*N*S_sq
-        return -real.(gradG)
-    end
-    function Gpp(eig_vals, Us, A_array)
-        Gppmat = zeros(ComplexF64,Na,Na)
-        for i ∈ 1:Na
-            for j ∈ 1:Na
-                P1 =diagm(zeros(ComplexF64,3Na))
-                P1[3i-2:3i,3i-2:3i] =diagm([1,1,1])
-                P2 =diagm(zeros(ComplexF64,3Na))
-                P2[3j-2:3j,3j-2:3j] =diagm([1,1,1])
-                # Gppmat[i,j] = -0.5*sum([tr(diagm(1 ./eig_vals[:,q]) * Us[:,:,q]' * P2 * Us[:,:,q] * diagm(1 ./eig_vals[:,q]) *  Us[:,:,q]' * P1 * Us[:,:,q] ) for q ∈ 1:size(eig_vals,2)])
-                Gppmat[i,j] = -0.5*sum([tr(inv(A_array[qi])  * P2  * inv(A_array[qi]) * P1  ) for qi ∈ 1:size(eig_vals,2)])
-            end
-        end
-        return -real.(Gppmat)
-    end
-    λn = λs
-    lout = [λn]
-    for n ∈ 1:maxiters
-        eig_vals, Us, A_array =  precalculate_matrices(λn) 
-        try
-            λ = λn -inv(Gpp(eig_vals, Us,A_array)) * Gp(eig_vals,Us) 
-            λn = λ
-        catch e 
-            println("unstable!")
-            break
-        end
-        push!(lout,λn)
-    end
-    return lout
+    gradG = gradF -0.5*N*S_sq
+    return G, gradG
 end
