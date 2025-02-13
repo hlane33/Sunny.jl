@@ -84,17 +84,17 @@ either the Classical or Quantum sum rules.
 
 """
 
-function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead")
-    Nq = 8
+function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead",Nq = 50)
     dq = 1/Nq;
     Na = natoms(sys.crystal)
     qarray = -0.5: dq : 0.5-dq
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
     Jq_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) for q_in ∈ q] 
+    av_S = sum(sys.κs)/Na
     if SumRule == "Classical"
-        S_sq = sys.κs[1]^2
+        S_sq = av_S^2
     elseif SumRule == "Quantum"
-        S_sq = sys.κs[1] * (sys.κs[1] + 1)
+        S_sq = av_S * (av_S + 1)
     else
         error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
     end
@@ -151,15 +151,14 @@ Lagrange multiplier, over the qpts specified.
 
 """
 
-function intensities_static_single(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7)
+function intensities_static_single(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum",starting_offset = 0.2, maxiters=1_000,method="Nelder Mead",tol=1e-7,Nq=50)
     kT == 0.0 && error("kT must be non-zero")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
     Na = natoms(sys.crystal)
-    Nq = length(qpts.qs)
     Nobs = num_observables(measure)
-    λ = find_lagrange_multiplier(sys,kT;SumRule,method,tol,maxiters,starting_offset)
-    intensity = zeros(eltype(measure),Nq)
+    λ = find_lagrange_multiplier(sys,kT;SumRule,method,tol,maxiters,starting_offset,Nq)
+    intensity = zeros(eltype(measure),length(qpts.qs))
     Ncorr = length(measure.corr_pairs)
     for (iq, q) in enumerate(qpts.qs)
         pref = zeros(ComplexF64, Nobs, Na)
@@ -175,6 +174,7 @@ function intensities_static_single(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum"
         end
         J_mat = fourier_transform_interaction_matrix(sys; k=q_reshaped, ϵ=regularization)
         inverted_matrix = (inv(I(3*Na)*λ[1] + (1/kT)*J_mat)) # this is [(Iλ+J(q))^-1]^αβ_μν
+        # inverted_matrix = diagm(1 ./ (λ[1] .+ (1/(kT)).*eigvals(J_mat)))
         for i ∈ 1:Na 
             for j ∈ 1:Na 
                 intensitybuf += pref[1,i]*conj(pref[1,j])*inverted_matrix[1+3(i-1):3+3(i-1),1+3(j-1):3+3(j-1)] 
@@ -200,16 +200,15 @@ Computes the static structure factor in the sublattice resolved SCGA method, ove
 qpts specified.
 """
 
-function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,λs_init)
+function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,λs_init,Nq = 50)
     kT == 0.0 && error("kT must be non-zero")
     println("Sublattice resolved SCGA currently only supports Conjugate Gradient optimization.")
     qpts = convert(AbstractQPoints, qpts)
     (; sys, measure, regularization) = scga
     Na = natoms(sys.crystal)
-    Nq = length(qpts.qs)
     Nobs = num_observables(measure)
-    λs = find_lagrange_multiplier_opt_sublattice(sys,λs_init,kT;SumRule,maxiters,tol)
-    intensity = zeros(eltype(measure),Nq)
+    λs = find_lagrange_multiplier_opt_sublattice(sys,λs_init,kT;SumRule,maxiters,tol,Nq)
+    intensity = zeros(eltype(measure),length(qpts.qs))
     Ncorr = length(measure.corr_pairs)
     for (iq, q) in enumerate(qpts.qs)
         pref = zeros(ComplexF64, Nobs, Na)
@@ -225,7 +224,7 @@ function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quan
         end
         J_mat = fourier_transform_interaction_matrix(sys; k=q_reshaped, ϵ=regularization)
         Λ =  diagm(repeat(λs, inner=3))
-        inverted_matrix = (inv(Λ + (1/kT)*J_mat)) # this is [(Iλ+J(q))^-1]^αβ_μν
+        inverted_matrix = (inv((1/kT)*Λ + (1/kT)*J_mat)) # this is [(Iλ+J(q))^-1]^αβ_μν
         for i ∈ 1:Na 
             for j ∈ 1:Na 
                 intensitybuf += pref[1,i]*conj(pref[1,j])*inverted_matrix[1+3(i-1):3+3(i-1),1+3(j-1):3+3(j-1)] 
@@ -253,11 +252,11 @@ sublattice_resolved = true.
 """
 
 
-function intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,method="Newton's Method",λs_init=nothing,sublattice_resolved = false)
+function intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,method="Newton's Method",λs_init=nothing,sublattice_resolved = false,Nq = 50)
     if sublattice_resolved == true
-        return intensities_static_sublattice(scga::SCGA, qpts; kT, SumRule , maxiters,tol,λs_init)
+        return intensities_static_sublattice(scga::SCGA, qpts; kT, SumRule , maxiters,tol,λs_init,Nq)
     else
-        return intensities_static_single(scga::SCGA, qpts; kT, SumRule ,starting_offset = 0.2, maxiters,method,tol)
+        return intensities_static_single(scga::SCGA, qpts; kT, SumRule ,starting_offset = 0.2, maxiters,method,tol,Nq)
     end
 end
 
@@ -269,7 +268,7 @@ using the Conjugate Gradient method as implemented in Optim.jl.
 
 """
 
-function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",maxiters=500,tol=1e-10)
+function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",maxiters=500,tol=1e-10,Nq = 50)
     if SumRule == "Classical"
         S_sq = vec(sys.κs.^2)
     elseif SumRule == "Quantum"
@@ -277,8 +276,7 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
     else
         error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
     end
-    Na = Sunny.natoms(sys.crystal)
-    Nq = 8
+    Na = natoms(sys.crystal)
     dq = 1/Nq;
     qarray = -0.5: dq : 0.5-dq
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
@@ -303,7 +301,7 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
     end
     function fg!(fbuffer,gbuffer,λs)
         Λ =  diagm(repeat(λs, inner=3))
-        A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
+        A_array = [(1/kT)*fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
         eig_vals = zeros(3Na,length(A_array))
         Us = zeros(ComplexF64,3Na,3Na,length(A_array))
         for j in 1:length(A_array)
@@ -333,7 +331,7 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
     end
     if λs == nothing
         println("No user provided initial guess for the Lagrange multipliers. Determining a sensible starting point from the interaction matrix.")
-        A_array = [Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0)  for q_in ∈ q] 
+        A_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0)  for q_in ∈ q] 
         eig_vals = zeros(3Na,length(A_array))
         Us = zeros(ComplexF64,3Na,3Na,length(A_array))
         for j in 1:length(A_array)
@@ -353,7 +351,7 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
         println("Using user provided initial starting point for the optimization of the Lagrange multipliers.")
         if f(λs) > 1e7
             println("Matrix is not positive definite. Shifting Lagrange multipliers to find a better starting point.")
-            A_array = [Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0)  for q_in ∈ q] 
+            A_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0)  for q_in ∈ q] 
             eig_vals = zeros(3Na,length(A_array))
             Us = zeros(ComplexF64,3Na,3Na,length(A_array))
             for j in 1:length(A_array)
@@ -385,7 +383,7 @@ function find_lagrange_multiplier_opt_WORKING(sys,λs,kT;SumRule = "Quantum",met
     else
         error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
     end
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     Nq = 8
     dq = 1/Nq;
     qarray = -0.5: dq : 0.5-dq
@@ -394,7 +392,7 @@ function find_lagrange_multiplier_opt_WORKING(sys,λs,kT;SumRule = "Quantum",met
     if method == "ConjugateGradient"
         function f(λs)
             Λ =  diagm(repeat(λs, inner=3))
-            A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
+            A_array = [(1/kT)*fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
             eig_vals = zeros(3Na,length(A_array))
             Us = zeros(ComplexF64,3Na,3Na,length(A_array))
             for j in 1:length(A_array)
@@ -413,7 +411,7 @@ function find_lagrange_multiplier_opt_WORKING(sys,λs,kT;SumRule = "Quantum",met
         function g!(storage,λs)
         # gradient 
             Λ =  diagm(repeat(λs, inner=3))
-            A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
+            A_array = [(1/kT)*fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  (1/kT)*Λ for q_in ∈ q] 
             eig_vals = zeros(3Na,length(A_array))
             Us = zeros(ComplexF64,3Na,3Na,length(A_array))
             for j in 1:length(A_array)
@@ -440,7 +438,7 @@ function find_lagrange_multiplier_opt_WORKING(sys,λs,kT;SumRule = "Quantum",met
     elseif method == "Newton's Method"
         function precalculate_matrices(λs)
             Λ =  diagm(repeat(λs, inner=3))
-            A_array = [(1/kT)*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) +  (1/kT)*Λ for q_in ∈ q] 
+            A_array = [(1/kT)*fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) +  (1/kT)*Λ for q_in ∈ q] 
             eig_vals = zeros(Float64,3Na,length(A_array))
             Us = zeros(ComplexF64,3Na,3Na,length(A_array))
             for j in 1:length(A_array)
@@ -510,14 +508,14 @@ function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
     else
         error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
     end
-    Na = Sunny.natoms(sys.crystal)
+    Na = natoms(sys.crystal)
     Nq = 8
     dq = 1/Nq;
     qarray = -0.5: dq : 0.5-dq
     N = length(qarray)
     q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
     Λ =  diagm(repeat(λs, inner=3))
-    A_array = [kT*Sunny.fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  kT*Λ for q_in ∈ q] 
+    A_array = [kT*fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) .+  kT*Λ for q_in ∈ q] 
     eig_vals = zeros(3Na,length(A_array))
     for j in 1:length(A_array)
          eig_vals[:,j] .= eigvals(A_array[j])
@@ -540,3 +538,4 @@ function free_energy_and_gradient(sys,λs,kT;SumRule = "Quantum")
     gradG = gradF -0.5*N*S_sq
     return G, gradG
 end
+
