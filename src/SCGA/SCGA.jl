@@ -74,7 +74,7 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
 end
 
 """
-    find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead")
+    find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead", Nq = 20)
 
 Computes the Lagrange multiplier for the standard SCGA approach with a common Lagrange multiplier 
 for all sublattices. Two optimization methods can be chosen, "Nelder Mead" which takes advantage 
@@ -84,11 +84,28 @@ either the Classical or Quantum sum rules.
 
 """
 
-function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead",Nq = 50)
+function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",starting_offset = 0.2, maxiters=1_000,tol = 1e-10,method = "Nelder Mead",Nq = 20)
     dq = 1/Nq;
     Na = natoms(sys.crystal)
+    bond_counter = zeros(Float64,3)
+    for i in 1:Na
+        for coupling in sys.interactions_union[i].pair
+            (; isculled, bond, bilin) = coupling
+            isculled && break
+            (; j, n) = bond
+            bond_counter += abs.(n)
+        end
+    end
     qarray = -0.5: dq : 0.5-dq
-    q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
+    qarrays = []
+    for i ∈ 1:3
+        if bond_counter[i] == 0
+            push!(qarrays,[0])
+        else
+            push!(qarrays,qarray)
+        end
+    end
+    q = [[qx, qy, qz] for qx in qarrays[1], qy in qarrays[2], qz in qarrays[3]]
     Jq_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) for q_in ∈ q] 
     av_S = sum(sys.κs)/Na
     if SumRule == "Classical"
@@ -200,7 +217,7 @@ Computes the static structure factor in the sublattice resolved SCGA method, ove
 qpts specified.
 """
 
-function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,λs_init,Nq = 50)
+function intensities_static_sublattice(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,λs_init,Nq = 20)
     kT == 0.0 && error("kT must be non-zero")
     println("Sublattice resolved SCGA currently only supports Conjugate Gradient optimization.")
     qpts = convert(AbstractQPoints, qpts)
@@ -252,7 +269,7 @@ sublattice_resolved = true.
 """
 
 
-function intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,method="Newton's Method",λs_init=nothing,sublattice_resolved = false,Nq = 50)
+function intensities_static(scga::SCGA, qpts; kT=0.0, SumRule = "Quantum", maxiters=500,tol=1e-10,method="Newton's Method",λs_init=nothing,sublattice_resolved = false,Nq = 20)
     if sublattice_resolved == true
         return intensities_static_sublattice(scga::SCGA, qpts; kT, SumRule , maxiters,tol,λs_init,Nq)
     else
@@ -268,7 +285,7 @@ using the Conjugate Gradient method as implemented in Optim.jl.
 
 """
 
-function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",maxiters=500,tol=1e-10,Nq = 50)
+function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",maxiters=500,tol=1e-10,Nq = 20)
     if SumRule == "Classical"
         S_sq = vec(sys.κs.^2)
     elseif SumRule == "Quantum"
@@ -278,8 +295,25 @@ function find_lagrange_multiplier_opt_sublattice(sys,λs,kT;SumRule = "Quantum",
     end
     Na = natoms(sys.crystal)
     dq = 1/Nq;
+    bond_counter = zeros(Float64,3)
+    for i in 1:Na
+        for coupling in sys.interactions_union[i].pair
+            (; isculled, bond, bilin) = coupling
+            isculled && break
+            (; j, n) = bond
+            bond_counter += abs.(n)
+        end
+    end
     qarray = -0.5: dq : 0.5-dq
-    q = [[qx, qy, qz] for qx in qarray, qy in qarray, qz in qarray]
+    qarrays = []
+    for i ∈ 1:3
+        if bond_counter[i] == 0
+            push!(qarrays,[0])
+        else
+            push!(qarrays,qarray)
+        end
+    end
+    q = [[qx, qy, qz] for qx in qarrays[1], qy in qarray[2], qz in qarray[3]]
     N = length(q)
     function f(λs)
         Λ =  diagm(repeat(λs, inner=3))
