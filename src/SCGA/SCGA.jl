@@ -51,7 +51,7 @@ function fourier_transform_interaction_matrix(sys::System; k, ϵ=0)
     end
 
     if !isnothing(sys.ewald)
-        A = precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB²
+        A = precompute_dipole_ewald_at_wavevector(sys.crystal, (1,1,1), k) * sys.ewald.μ0_μB² # check this is in the right coordinate system
         A = reshape(A, Na, Na)
         for i in 1:Na, j in 1:Na
             J_k[:, i, :, j] += sys.gs[i]' * A[i, j] * sys.gs[j] / 2
@@ -107,11 +107,11 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
     end
     q = [[qx, qy, qz] for qx in qarrays[1], qy in qarrays[2], qz in qarrays[3]]
     Jq_array = [fourier_transform_interaction_matrix(sys; k=q_in, ϵ=0) for q_in ∈ q] 
-    av_S = sum(sys.κs)/Na
+    #TODO throw error if spins different
     if SumRule == "Classical"
-        S_sq = av_S^2
+        S_sq = sum(sys.κs.^2)/Na
     elseif SumRule == "Quantum"
-        S_sq = av_S * (av_S + 1)
+        S_sq = sum(sys.κs .*(sys.κs.+1))/Na
     else
         error("Unsupported SumRule: $SumRule. Expected 'Classical' or 'Quantum'.")
     end
@@ -141,7 +141,7 @@ function find_lagrange_multiplier(sys::System,kT; ϵ=0, SumRule = "Classical",st
             return -(1/(Na*length(q))) * sum_term  
         end
         lower = -minimum(eig_vals)/kT
-        λn = starting_offset*0.1+ lower
+        λn = starting_offset*0.1+ lower # Make more robust - regularized! Check optim.jl
         for n ∈ 1:maxiters
           λ = λn + (1/J(λn))*(S_sq-f(λn))
           if abs(λ-λn) < tol 

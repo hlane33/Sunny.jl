@@ -167,3 +167,47 @@ end
     golden_data = [5.290737305656931, 4.7748982402676265, 4.08328246178467, 4.042960776695628, 4.590499089153959, 6.013520972997832, 8.995831669892262, 13.95353903683679, 17.263753113653635, 13.95353903683679, 8.995831669892262, 6.013520972997832, 4.590499089153959, 4.042960776695629, 4.0832824617846715, 4.7748982402676265, 5.290737305656931]
     @test sum(abs.(golden_data - res_SCGA.data)./ golden_data)/length(golden_data) < tol
 end
+
+@testitem "SCGA Kitchen sink" begin
+    using LinearAlgebra
+    tol = 1e-9
+    a = 5.
+    c = 17.
+    latvecs = lattice_vectors(a, a, c, 90, 90, 120) #
+    positions = [[2/3, 1/3, 0.5],[1/3, 2/3, 0.25]] 
+    types = ["Fe","Mn"]
+    cryst = Crystal(latvecs, positions,148; types)
+    spininfos = [1 => Moment(; s=1, g=3.4),7 => Moment(; s=2, g=2)]
+    sys = System(cryst, spininfos, :dipole; seed=2)
+    J1 = -2.0*diagm([1.,1.,1.2])
+    J2 = 5.25*[1 0.05 0;
+                0.05 1 0;
+                0 0 0];
+    J3 = 0.75*diagm([1.,0.25,1.23])+0.23dmvec([0.23,0.87,0.43])
+    J4 = 0.25*diagm([0.34,0.12,1.16])+0.23dmvec([0.98,0.65,0.353])
+    J5 = 0.23*[1 0 0;
+    0 1 0.34;
+    0 0.34 0];
+    J6 = -0.1*diagm([1.,1.,1.8])+0.086dmvec([0,0,1])
+    J7 = 0.098*diagm([1.,1.,1.8])+0.021dmvec([0.2,0.34,0.65])
+    J8 =  -0.23*diagm([1.,0.8,1.])+0.021dmvec([0.94,0.24,0.15])
+    J9 = 1*diagm([1.21,1.11,0.76])+0.3dmvec([0.7,0.61,0.62])
+    J10 = -0.265diagm([1,1.,0.45])
+    D1 = -0.27
+    D2 = 0.12
+    set_exchange!(sys,J1,Bond(7, 8, [0, 0, 0])) # Mn dimer XXZ
+    set_exchange!(sys,J2,Bond(1, 2, [0, 0, 0])) # Fe HC 1nn XYZ + PsD 
+    set_exchange!(sys,J3,Bond(1, 7, [0, 0, 0])) # Mn-Fe  XYZ + DMI [GHI]
+    set_exchange!(sys,J4,Bond(1, 8, [0, 0, 0])) # Mn-Fe  XYZ + DMI [GHI]
+    set_exchange!(sys,J7,Bond(1, 1, [1, 0, 0])) # Fe HC 2nn XYZ + DMI [G H I]
+    set_exchange!(sys,J8,Bond(7, 7, [1, 0, 0])) # Mn in-plane XYZ + DMI [G H I]
+    set_onsite_coupling!(sys, S -> D1*S[3]^2, 1)
+    set_onsite_coupling!(sys, S -> D2*S[3]^2, 7)
+    kT = 80.5*meV_per_K
+    measure = ssf_perp(sys;)
+    scga = Sunny.SCGA(sys;measure)
+    q_vals =  [[0.06, 0.49, 0.59],[0.47, 0.58, 0.84],[0.71, 0.92, 0.02],[0.13, 0.05, 0.45],[0.81, 0.15, 0.26],[0.19, 0.56, 0.44],[0.57, 0.92, 0.07],[0.71, 0.95, 0.86],[0.3, 0.13, 0.77],[1.0, 0.1, 0.19]]
+    res = Sunny.intensities_static(scga, q_vals; kT, SumRule="Classical",sublattice_resolved = true,tol = 1e-10,Nq = 10,λs_init = [22.47960976417936, 22.479609764179354, 22.479609764179383, 22.47960976417936, 22.479609764179358, 22.479609764179365, 5.706769019158553, 5.706769019158554, 5.706769019158549, 5.70676901915855, 5.706769019158553, 5.706769019158554])
+    golden_data =  [23.91170663898754,26.23603943782467,24.927302064839658,30.925830013455293,44.18723874237649,28.009379286498838,23.87201763264413,22.986516195913886,22.342746975584234,51.13113544108942];
+    @test norm(res.data-golden_data) < tol
+end
