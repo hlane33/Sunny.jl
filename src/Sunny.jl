@@ -98,6 +98,9 @@ include("SpinWaveTheory/LSWTCorrections.jl")
 export SpinWaveTheory, excitations, excitations!, dispersion, intensities, intensities_bands,
     intensities_static
 
+include("NoiseSpectroscopy/FilterFunctions.jl")
+export noise_spectral_function, phi_sq, RamseyFilter, CPMGFilter
+
 include("Spiral/LuttingerTisza.jl")
 include("Spiral/SpiralEnergy.jl")
 include("Spiral/SpinWaveTheorySpiral.jl")
