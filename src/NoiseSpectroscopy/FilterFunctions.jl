@@ -30,7 +30,7 @@ true value will depend on the size/shape of the sample. The integral is performe
 to cover the 1BZ. In future we will want to sample more finely at small q. We can probably restrict the integral to a small area around q=[0,0,0]. 
 """
 
-function noise_spectral_function(sys,ω,n,z;Nq = 10)
+function noise_spectral_function(sys,ω,n,z;Nq = 10,kT=0)
     dq = 1/Nq
     qs = -1/2 : dq : 1/2 - dq 
     qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
@@ -39,7 +39,7 @@ function noise_spectral_function(sys,ω,n,z;Nq = 10)
     measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
     swt = SpinWaveTheory(sys;measure)
     kernel = lorentzian(fwhm=0.1)
-    res = intensities(swt, qgrid[:]; energies=[ω], kernel)
+    res = intensities(swt, qgrid[:]; energies=[ω], kernel,kT)
     Dμα = dipole_field(sys,qgrid[:],z)
     Dνβ = dipole_field(sys,-qgrid[:],z)
     Sqw = res.data
@@ -107,11 +107,11 @@ end
 frequencies with step dω
 """
 
-function phi_sq(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,N=nothing)
+function phi_sq(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,N=nothing,kT = 0)
     ωgrid = dω:dω:ωmax #discontinuous at ω=0, so start at dω
     integral_grid = zeros(ComplexF64,length(ωgrid))
     for (ωi,ω) in enumerate(ωgrid)
-        integral_grid[ωi] = f(ω,τ;N)[1]*noise_spectral_function(sys,ω,n,z)
+        integral_grid[ωi] = f(ω,τ;N)[1]*noise_spectral_function(sys,ω,n,z;kT)
     end
     return real((1/2π)*sum(integral_grid)*dω)
 end
