@@ -12,43 +12,26 @@ function dipole_field(sys,qs,z)
         V2d = abs(det(cryst.latvecs[1:2,1:2]))
         q_global = cryst.recipvecs * q
         λ = norm(q_global) # assume ω << c
-        H=(exp(-λ*z)/2V2d)*[(q_global[1]^2)/λ  q_global[1]*q_global[2]/λ   im*q_global[1];
-        q_global[1]*q_global[2]/λ   q_global[2]^2/λ im*q_global[2];
-        im*q_global[1]  im*q_global[2]  -norm(q)];
+        H=(exp(-λ*z)/(2V2d))*[(q_global[1]^2)/λ  (q_global[1]*q_global[2])/λ   im*q_global[1]
+        (q_global[1]*q_global[2])/λ   (q_global[2]^2)/λ im*q_global[2]
+        im*q_global[1]  im*q_global[2]  -norm(q_global)]
         push!(out,H)
     end
     return out
 end
-"""
-     momentum_filter(sys,qs,z)
 
-Calculates the momentum filter function at distance z from a 2d magnetic plane. qs is provided in the r.l.u of the crystal. The crystal is assumed
-to be defined such that a,b ⟂ z. Deprecated function.
 """
-function momentum_filter(sys,qs,z)
-    out = []
-    sys.dims[3] == 1 || error("System not two-dimensional in (a₁, a₂). Noise spectroscopy not available yet for 3d crystals.")
-    V2d = abs(det(cryst.latvecs[1:2,1:2]))
-    for q ∈ qs
-        Hq = dipole_field(sys,q,z)
-        Hmq = dipole_field(sys,-q,z)
-        W = zeros(ComplexF64,3,3,3,3)
-        for α ∈ 1:3 # DSSF component
-            for β ∈ 1:3 # DSSF component
-                for μ ∈ 1:3 # NV component
-                    for ν ∈ 1:3 # NV component
-                        W[μ,ν,α,β] = Hq[μ,α]*Hmq[ν,β] 
-                    end
-                end
-            end
-        end
-        push!(out,W*V2d*(2*0.6745817653/0.05788381806)^2)
-    end
-    return out
-end
+     noise_spectral_function(sys,ω,n,z)
 
-function noise_spectral_function(sys,ω,n,z)
-    dq = 1/10
+Calculates the noise spectral function at distance z from a 2d magnetic plane. qs is provided in the r.l.u of the crystal. The crystal is assumed
+to be defined such that a,b ⟂ z. The momentum filter function is included in this definition with the appropriate terms for an NV oriented along the
+direction n = (nx,ny,nz). The dipolar field diverges at q=[0,0,0], currently we skip this point. In future we can pick some sensible value here. The 
+true value will depend on the size/shape of the sample. The integral is performed on a grid in the 2d Brillouin zone. Currently a Nq × Nq grid is built
+to cover the 1BZ. In future we will want to sample more finely at small q. We can probably restrict the integral to a small area around q=[0,0,0]. 
+"""
+
+function noise_spectral_function(sys,ω,n,z;Nq = 10)
+    dq = 1/Nq
     qs = -1/2 : dq : 1/2 - dq 
     qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
     Nqs = length(qgrid)
@@ -73,8 +56,8 @@ function noise_spectral_function(sys,ω,n,z)
             end
         end
         if isnan(sum(buff))
-            bad_q = qgrid[qi]
-            println("NaN at $bad_q")
+            # bad_q = qgrid[qi]
+            # println("NaN at $bad_q")
         else
             Nαβ[:,:,qi] .= buff
         end
@@ -83,21 +66,33 @@ function noise_spectral_function(sys,ω,n,z)
     return out
 end
 
+"""
+     CPMGFilter(ωs,τ,N)
 
-begin CPMGFilter(ωs,τ,N)
+Frequency filter function evaluated at frequencies ωs and time τ for CPMG pulse sequence of N π pulses.
+"""
+
+function CPMGFilter(ωs,τ;N=1)
     W = zeros(Float64,length(ωs))
     if isodd(N)
-        f(ω,τ,N) = (16/(ω^2))*((sin(ω*τ/(4*N)))^4/(cos(ω*t/(2*N)))^2)*cos(ω*τ/2)^2
+        for (ωi,ω) in enumerate(ωs)
+            W[ωi] = (16/(ω^2))*((sin(ω*τ/(4*N)))^4/(cos(ω*τ/(2*N)))^2)*cos(ω*τ/2)^2
+        end
     else
-        f(ω,τ,N) = (16/(ω^2))*((sin(ω*τ/(4*N)))^4/(cos(ω*t/(2*N)))^2)*sin(ω*τ/2)^2
-    end
-    for (ωi,ω) ∈ enumerate(ωs)
-        W[ωi] = f(ω,τ,N)
+        for (ωi,ω) in enumerate(ωs)
+            W[ωi] = (16/(ω^2))*((sin(ω*τ/(4*N)))^4/(cos(ω*τ/(2*N)))^2)*sin(ω*τ/2)^2
+        end
     end
     return W 
 end
 
-begin RamseyFilter(ωs,τ,N)
+"""
+     RamseyFilter(ωs,τ)
+
+Frequency filter function evaluated at frequencies ωs and time τ for Ramsey pulse sequence.
+"""
+
+function RamseyFilter(ωs,τ;N=nothing)
     W = zeros(Float64,length(ωs))
     for (ωi,ω) ∈ enumerate(ωs)
         W[ωi] = (4*sin(ω*τ/2)^2)/ω^2
@@ -105,13 +100,58 @@ begin RamseyFilter(ωs,τ,N)
     return W 
 end
 
-function phi_sq(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,τ=1,N=nothing)
-    ωgrid = 0:dω:ωmax
-    integral_grid = zeros(Float64,length(ωgrid))
+"""
+     phi_sq(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,τ=1,N=nothing)
+
+<ϕ²> for a pulse sequence defined by the function f. The integral is performed over a grid in
+frequencies with step dω
+"""
+
+function phi_sq(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,N=nothing)
+    ωgrid = dω:dω:ωmax #discontinuous at ω=0, so start at dω
+    integral_grid = zeros(ComplexF64,length(ωgrid))
     for (ωi,ω) in enumerate(ωgrid)
-        integral_grid[ωi] = f(ω,τ,N)*noise_spectral_function(sys,ω,n,z)
+        integral_grid[ωi] = f(ω,τ;N)[1]*noise_spectral_function(sys,ω,n,z)
     end
-    return (1/2π)*sum(integral_grid)
+    return real((1/2π)*sum(integral_grid)*dω)
 end
 
-res = noise_spectral_function(sys,0.1,[0,0,1.],0.02)
+#########################
+# Test functions 
+
+function momentum_filter_test(sys,q,z)
+    Dμα = dipole_field(sys,q,z)
+    Dνβ = dipole_field(sys,-q,z)
+    cryst = Sunny.orig_crystal(sys)
+    # println(norm(cryst.recipvecs * q[1])*exp(-norm(cryst.recipvecs * q[1])*z)/2)
+    q_glob = cryst.recipvecs * q[1]
+    te=-(1/2)*exp(-norm(q_glob)*z)*norm(q_glob)
+    # println("Expected dipole zz term: $te")
+    # dipoleval = Dμα[1][3,3]
+    # println("Dipole zz term: $dipoleval" )
+    W= Dμα[1][3,3]*Dνβ[1][3,3]
+    out = ((2*0.6745817653/0.05788381806)^2)*W
+    return out
+end
+
+function noise_test(sys,z,w)
+    dq = 1/30
+    qs = -1/2 : dq : 1/2 - dq 
+    d = 0.001
+    qgrid =  [[qx+d,qy,0] for qx ∈ qs, qy ∈ qs]
+    sumlist = []
+    for q in qgrid
+        W = momentum_filter_test(sys,[q],z)
+        push!(sumlist,W*Sqw_test(sys,q,w))
+    end
+    out=(1/length(qgrid))*sum(sumlist)
+    return out
+end
+
+function Sqw_test(sys,q,w)
+    cryst = Sunny.orig_crystal(sys)
+    q_global = cryst.recipvecs * q
+    A = 1.0
+    B = 1.0
+    return (2A*norm(q_global)^2)/(w^2 +(B*norm(q_global)^2)^2)
+end
