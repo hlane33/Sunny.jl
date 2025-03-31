@@ -30,6 +30,62 @@ to cover the 1BZ. In future we will want to sample more finely at small q. We ca
 """
 
 
+# function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1,nsamples = 3, ndwell=100)
+#     dq = 1/Nq
+#     qs = -1/2 : dq : 1/2 - dq 
+#     qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
+#     Nqs = length(qgrid)
+#     nhat = norm(n)
+#     measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
+#     kernel = lorentzian(fwhm=0.1)
+#     if method == "LSWT"
+#         swt = SpinWaveTheory(sys;measure)
+#         res = intensities(swt, qgrid[:]; energies=ωs, kernel,kT)
+#     elseif method == "LLD"
+#         kT == 0 ? error("Please provide finite temperature for LLD.") : nothing
+#         langevin = Langevin(dt; damping=0.2, kT)
+#         (zer,ωmin)= findmin(norm.(ωs))
+#         sc = SampledCorrelations(sys; dt, energies=pos_ωs, measure)
+#         for _ in 1:nsamples
+#             for _ in 1:ndwell
+#                 step!(sys, langevin)
+#             end
+#             add_sample!(sc, sys)
+#         end
+#         res = intensities(sc, qgrid[:]; energies=pos_ωs, kT)
+#     else
+#         error("Please provide a valid method: LLD or LSWT, with appropriate kwargs.")
+#     end
+#     Dμα = Sunny.dipole_field(sys,qgrid[:],z)
+#     Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
+#     Sqw = res.data
+#     Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
+#     for (wi,w) ∈ enumerate(ωs)
+#         for qi ∈ 1:length(qgrid)
+#             buff = zeros(ComplexF64,3,3)
+#             for (μ,nμ) ∈ enumerate(nhat)
+#                 for (ν,nν) ∈ enumerate(nhat)
+#                     for α = 1:3
+#                         for β = 1:3
+#                             buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
+#                         end
+#                     end
+#                 end
+#             end
+#             if isnan(sum(buff))
+#                 # bad_q = qgrid[qi]
+#                 # println("NaN at $bad_q")
+#             else
+#                 Nαβ[:,:,qi,wi] .= buff
+#             end
+#         end
+#     end
+#     out = (1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)
+#     return out[1,1,1,:]
+# end
+
+
+
 function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1,nsamples = 3, ndwell=100)
     dq = 1/Nq
     qs = -1/2 : dq : 1/2 - dq 
@@ -44,7 +100,9 @@ function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1
     elseif method == "LLD"
         kT == 0 ? error("Please provide finite temperature for LLD.") : nothing
         langevin = Langevin(dt; damping=0.2, kT)
-        (zer,ωmin)= findmin(norm.(ωs))
+        ωmax = round(ωs[end];digits=3)
+        dω = round(ωs[end]-ωs[end-1];digits=3)
+        pos_ωs = 0:dω:ωmax
         sc = SampledCorrelations(sys; dt, energies=pos_ωs, measure)
         for _ in 1:nsamples
             for _ in 1:ndwell
@@ -59,29 +117,60 @@ function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1
     Dμα = Sunny.dipole_field(sys,qgrid[:],z)
     Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
     Sqw = res.data
-    Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
-    for (wi,w) ∈ enumerate(ωs)
-        for qi ∈ 1:length(qgrid)
-            buff = zeros(ComplexF64,3,3)
-            for (μ,nμ) ∈ enumerate(nhat)
-                for (ν,nν) ∈ enumerate(nhat)
-                    for α = 1:3
-                        for β = 1:3
-                            buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
+    if method == "LSWT"
+        Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
+        for (wi,w) ∈ enumerate(ωs)
+            for qi ∈ 1:length(qgrid)
+                buff = zeros(ComplexF64,3,3)
+                for (μ,nμ) ∈ enumerate(nhat)
+                    for (ν,nν) ∈ enumerate(nhat)
+                        for α = 1:3
+                            for β = 1:3
+                                buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
+                            end
                         end
                     end
                 end
-            end
-            if isnan(sum(buff))
-                # bad_q = qgrid[qi]
-                # println("NaN at $bad_q")
-            else
-                Nαβ[:,:,qi,wi] .= buff
+                if isnan(sum(buff))
+                    # bad_q = qgrid[qi]
+                    # println("NaN at $bad_q")
+                else
+                    Nαβ[:,:,qi,wi] .= buff
+                end
             end
         end
+        out = (1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)[1,1,1,:]
+    else       
+        Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(pos_ωs))
+        Nαβ_neg = zeros(ComplexF64,3,3,length(qgrid),length(pos_ωs))
+        for (wi,w) ∈ enumerate(pos_ωs)
+            for qi ∈ 1:length(qgrid)
+                buff = zeros(ComplexF64,3,3)
+                buff_neg = zeros(ComplexF64,3,3)
+                for (μ,nμ) ∈ enumerate(nhat)
+                    for (ν,nν) ∈ enumerate(nhat)
+                        for α = 1:3
+                            for β = 1:3
+                                buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
+                                buff_neg[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*conj.(Sqw[wi,qi][β,α])*exp(-w/kT)
+                            end
+                        end
+                    end
+                end
+                if isnan(sum(buff)) || isnan(sum(buff_neg))
+                    # bad_q = qgrid[qi]
+                    # println("NaN at $bad_q")
+                else
+                    Nαβ[:,:,qi,wi] .= buff
+                    Nαβ_neg[:,:,qi,wi] .= buff_neg
+                end
+            end
+        end
+        out_pos = (1/Nqs)*(2*0.6745817653)^2*(sum(Nαβ;dims = 1:3))[1,1,1,:]
+        out_neg = reverse((1/Nqs)*(2*0.6745817653)^2*(sum(Nαβ_neg;dims = 1:3))[1,1,1,2:end])
+        out = vcat(out_neg,out_pos)
     end
-    out = (1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)
-    return out[1,1,1,:]
+    return out
 end
 
 """
@@ -128,7 +217,7 @@ frequencies with step dω
 function phi_sq(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,N=nothing,kT = 0,method="LSWT")
     ωgrid = -ωmax:dω:ωmax #discontinuous at ω=0, so start at small offset
     δ = 1e-6 # small offset to get rid of discontinuity at [0,0,0]
-    integral_grid = f(ωgrid.+δ,τ;N).*noise_spectral_function(sys,ωgrid.+δ,n,z;kT,method)
+    integral_grid = f(ωgrid.+δ,τ;N).*noise_spectral_function(sys,ωgrid,n,z;kT,method)
     return real((1/2π)*sum(integral_grid)*dω)
 end
 
