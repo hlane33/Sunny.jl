@@ -30,7 +30,56 @@ to cover the 1BZ. In future we will want to sample more finely at small q. We ca
 """
 
 
-function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1,nsamples = 3, ndwell=100,Γ=0.025)
+
+function noise_spectral_function_LLD(sys,n,z;Nq = 10,kT=0,dt = 0.1,nsamples = 3, ndwell=100,ωmax=2.0,dω=0.1)
+    dq = 1/Nq
+    qs = -1/2 : dq : 1/2 - dq 
+    qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
+    Nqs = length(qgrid)
+    nhat = norm(n)
+    measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
+    kT == 0 ? error("Please provide finite temperature for LLD.") : nothing
+    langevin = Langevin(dt; damping=0.2, kT)
+    pos_ωs = 0:dω:ωmax
+    cryst = Sunny.orig_crystal(sys)
+    V2d = abs(det(cryst.latvecs[1:2,1:2]))
+    sc = SampledCorrelations(sys; dt, energies=pos_ωs, measure)
+    for _ in 1:nsamples
+        for _ in 1:ndwell
+            step!(sys, langevin)
+        end
+        add_sample!(sc, sys)
+    end
+    res = intensities(sc, qgrid[:]; energies=:available_with_negative, kT)
+    Dμα = Sunny.dipole_field(sys,qgrid[:],z)
+    Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
+    Sqw = res.data
+    ωs = available_energies(sc; negative_energies=true)     
+    Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
+    for (wi,w) ∈ enumerate(ωs)
+        for qi ∈ 1:length(qgrid)
+            buff = zeros(ComplexF64,3,3)
+            for (μ,nμ) ∈ enumerate(nhat)
+                for (ν,nν) ∈ enumerate(nhat)
+                    for α = 1:3
+                        for β = 1:3
+                            buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
+                        end
+                    end
+                end
+            end
+            if isnan(sum(buff))
+                # bad_q = qgrid[qi]
+                # println("NaN at $bad_q")
+            else
+                Nαβ[:,:,qi,wi] .= buff
+            end
+        end
+    end
+    out = V2d*(1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)[1,1,1,:]
+    return out, ωs
+end
+function noise_spectral_function_LSWT(sys,ωs,n,z;Nq = 10,kT=0,Γ=0.025)
     dq = 1/Nq
     qs = -1/2 : dq : 1/2 - dq 
     qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
@@ -38,32 +87,11 @@ function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1
     nhat = norm(n)
     measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
     kernel = lorentzian(fwhm=Γ)
-    if method == "LSWT"
-        swt = SpinWaveTheory(sys;measure)
-        res = intensities(swt, qgrid[:]; energies=ωs, kernel,kT)
-    elseif method == "LLD"
-        kT == 0 ? error("Please provide finite temperature for LLD.") : nothing
-        langevin = Langevin(dt; damping=0.2, kT)
-        ωmax = round(ωs[end];digits=3)
-        dω = round(ωs[end]-ωs[end-1];digits=3)
-        pos_ωs = 0:dω:ωmax
-        sc = SampledCorrelations(sys; dt, energies=pos_ωs, measure)
-        for _ in 1:nsamples
-            for _ in 1:ndwell
-                step!(sys, langevin)
-            end
-            add_sample!(sc, sys)
-        end
-        res = intensities(sc, qgrid[:]; energies=:available_with_negative, kT)
-    else
-        error("Please provide a valid method: LLD or LSWT, with appropriate kwargs.")
-    end
+    swt = SpinWaveTheory(sys;measure)
+    res = intensities(swt, qgrid[:]; energies=ωs, kernel,kT)
     Dμα = Sunny.dipole_field(sys,qgrid[:],z)
     Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
     Sqw = res.data
-    if method=="LLD"
-        ωs = available_energies(sc; negative_energies=true)
-    end
     Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
     for (wi,w) ∈ enumerate(ωs)
         for qi ∈ 1:length(qgrid)
@@ -86,8 +114,9 @@ function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1
         end
     end
     out = (1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)[1,1,1,:]
-    return out # This set of if statements is ugly. Only include until we test LSWT for detailed balance or work out a better way to deal with LLD for negative energy
+    return out
 end
+
 
 """
      CPMGFilter(ωs,τ,N)
@@ -130,12 +159,24 @@ end
 frequencies with step dω
 """
 
-function phi_sq(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,N=nothing,kT = 0,method="LSWT",Γ=0.025)
-    ωgrid = -ωmax:dω:ωmax #discontinuous at ω=0, so start at small offset
-    δ = 1e-6 # small offset to get rid of discontinuity at [0,0,0]
-    integral_grid = f(ωgrid.+δ,τ;N).*noise_spectral_function(sys,ωgrid,n,z;kT,method)
-    return real((1/2π)*sum(integral_grid)*dω)
+
+function phi_sq(sys,τ,z,n;method="LSWT",Nq=10,kT = 0.0,nsamples = 2, ndwell = 100,ωmax=2.0,dω=0.1,f=RamseyFilter,N=nothing,Γ=0.05,dt =0.1  )
+    if method == "LSWT"
+        ωgrid = -ωmax:dω:ωmax #discontinuous at ω=0, so start at small offset
+        δ = 1e-6 # small offset to get rid of discontinuity at [0,0,0]
+        integral_grid = f(ωgrid.+δ,τ;N).*noise_spectral_function_LSWT(sys,ωgrid,n,z;Nq,kT,Γ)
+        out = real((1/2π)*sum(integral_grid)*dω)
+    elseif method == "LLD"
+        δ = 1e-6 # small offset to get rid of discontinuity at [0,0,0]
+        Nw,ωs = noise_spectral_function_LLD(sys,n,z;Nq,kT,dt,nsamples, ndwell,ωmax,dω)
+        integral_grid = f(ωs.+δ,τ;N).*Nw
+        out = real((1/2π)*sum(integral_grid)*(1/length(ωs)))
+    else
+        error("Provide valid method")
+    end
+    return out
 end
+
 
 #########################
 # Test functions 
@@ -221,5 +262,71 @@ function phi_sq_old(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,N=nothing,k
     for (ωi,ω) in enumerate(ωgrid)
         integral_grid[ωi] = f(ω+δ,τ;N)[1]*noise_spectral_function(sys,ω+δ,n,z;kT)
     end
+    return real((1/2π)*sum(integral_grid)*dω)
+end
+
+function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1,nsamples = 3, ndwell=100,Γ=0.025)
+    dq = 1/Nq
+    qs = -1/2 : dq : 1/2 - dq 
+    qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
+    Nqs = length(qgrid)
+    nhat = norm(n)
+    measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
+    kernel = lorentzian(fwhm=Γ)
+    if method == "LSWT"
+        swt = SpinWaveTheory(sys;measure)
+        res = intensities(swt, qgrid[:]; energies=ωs, kernel,kT)
+    elseif method == "LLD"
+        kT == 0 ? error("Please provide finite temperature for LLD.") : nothing
+        langevin = Langevin(dt; damping=0.2, kT)
+        ωmax = round(ωs[end];digits=3)
+        dω = round(ωs[end]-ωs[end-1];digits=3)
+        pos_ωs = 0:dω:ωmax
+        sc = SampledCorrelations(sys; dt, energies=pos_ωs, measure)
+        for _ in 1:nsamples
+            for _ in 1:ndwell
+                step!(sys, langevin)
+            end
+            add_sample!(sc, sys)
+        end
+        res = intensities(sc, qgrid[:]; energies=:available_with_negative, kT)
+    else
+        error("Please provide a valid method: LLD or LSWT, with appropriate kwargs.")
+    end
+    Dμα = Sunny.dipole_field(sys,qgrid[:],z)
+    Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
+    Sqw = res.data
+    if method=="LLD"
+        ωs = available_energies(sc; negative_energies=true)
+    end
+    Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
+    for (wi,w) ∈ enumerate(ωs)
+        for qi ∈ 1:length(qgrid)
+            buff = zeros(ComplexF64,3,3)
+            for (μ,nμ) ∈ enumerate(nhat)
+                for (ν,nν) ∈ enumerate(nhat)
+                    for α = 1:3
+                        for β = 1:3
+                            buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
+                        end
+                    end
+                end
+            end
+            if isnan(sum(buff))
+                # bad_q = qgrid[qi]
+                # println("NaN at $bad_q")
+            else
+                Nαβ[:,:,qi,wi] .= buff
+            end
+        end
+    end
+    out = (1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)[1,1,1,:]
+    return out # This set of if statements is ugly. Only include until we test LSWT for detailed balance or work out a better way to deal with LLD for negative energy
+end
+
+function phi_sq_old2(sys,τ,z,n;dω=0.05, ωmax=1.0, f = RamseyFilter,N=nothing,kT = 0,method="LSWT",Γ=0.025)
+    ωgrid = -ωmax:dω:ωmax #discontinuous at ω=0, so start at small offset
+    δ = 1e-6 # small offset to get rid of discontinuity at [0,0,0]
+    integral_grid = f(ωgrid.+δ,τ;N).*noise_spectral_function(sys,ωgrid,n,z;kT,method)
     return real((1/2π)*sum(integral_grid)*dω)
 end
