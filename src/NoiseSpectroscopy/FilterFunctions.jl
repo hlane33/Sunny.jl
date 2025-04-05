@@ -5,10 +5,23 @@ Calculates the dipolar field at distance z from a 2d magnetic plane. qs is provi
 to be defined such that a,b ⟂ z. This function assumes that ω << c so that the momentum and frequency filter functions can be separated.
 """
 
-function dipole_field(sys,qs,z)
+function dipole_field(sys::System,qs,z)
     H = zeros(ComplexF64,3,3,length(qs))
     for (qi,q) ∈ enumerate(qs)
         cryst = Sunny.orig_crystal(sys)
+        V2d = abs(det(cryst.latvecs[1:2,1:2]))
+        q_global = cryst.recipvecs * q
+        λ = norm(q_global) # assume ω << c
+        H[:,:,qi]=(exp(-λ*z)/(2V2d))*[(q_global[1]^2)/λ  (q_global[1]*q_global[2])/λ   im*q_global[1]
+        (q_global[1]*q_global[2])/λ   (q_global[2]^2)/λ im*q_global[2]
+        im*q_global[1]  im*q_global[2]  -norm(q_global)]
+    end
+    return H
+end
+
+function dipole_field(cryst::Crystal,qs,z)
+    H = zeros(ComplexF64,3,3,length(qs))
+    for (qi,q) ∈ enumerate(qs)
         V2d = abs(det(cryst.latvecs[1:2,1:2]))
         q_global = cryst.recipvecs * q
         λ = norm(q_global) # assume ω << c
@@ -29,94 +42,31 @@ true value will depend on the size/shape of the sample. The integral is performe
 to cover the 1BZ. In future we will want to sample more finely at small q. We can probably restrict the integral to a small area around q=[0,0,0]. 
 """
 
-
-
-function noise_spectral_function_LLD(sys,n,z;Nq = 10,kT=0,dt = 0.1,nsamples = 3, ndwell=100,ωmax=2.0,dω=0.1)
-    dq = 1/Nq
-    qs = -1/2 : dq : 1/2 - dq 
-    qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
-    Nqs = length(qgrid)
-    nhat = norm(n)
-    measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
-    kT == 0 ? error("Please provide finite temperature for LLD.") : nothing
-    langevin = Langevin(dt; damping=0.2, kT)
-    pos_ωs = 0:dω:ωmax
-    cryst = Sunny.orig_crystal(sys)
-    V2d = abs(det(cryst.latvecs[1:2,1:2]))
-    sc = SampledCorrelations(sys; dt, energies=pos_ωs, measure)
-    for _ in 1:nsamples
-        for _ in 1:ndwell
-            step!(sys, langevin)
-        end
-        add_sample!(sc, sys)
-    end
-    res = intensities(sc, qgrid[:]; energies=:available_with_negative, kT)
-    Dμα = Sunny.dipole_field(sys,qgrid[:],z)
-    Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
-    Sqw = res.data
-    ωs = available_energies(sc; negative_energies=true)     
-    Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
-    for (wi,w) ∈ enumerate(ωs)
-        for qi ∈ 1:length(qgrid)
-            buff = zeros(ComplexF64,3,3)
-            for (μ,nμ) ∈ enumerate(nhat)
-                for (ν,nν) ∈ enumerate(nhat)
-                    for α = 1:3
-                        for β = 1:3
-                            buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
-                        end
-                    end
+# function that takes S(q,w) data and calculates Nμν(w)
+function noise_spectral_function(sqw::Intensities,n,z)
+    nhat = n/norm(n)
+    cryst = sqw.crystal
+    qpts = sqw.qpts.qs
+    Nqs = length(qpts) 
+    energies = sqw.energies
+    Sqw_data  = reshape(reinterpret(ComplexF64, sqw.data), 3, 3, length(energies), Nqs)
+    # need some checks that sqw.data is right shape for 3×3
+    dipole_field_data = dipole_field(cryst,qpts,z)
+    dipole_field_minus_data = dipole_field(cryst,-qpts,z)
+    noise_array = zeros(ComplexF64,3,3,length(energies),Nqs)
+    for μ=1:3
+        for ν=1:3
+            for α=1:3
+                for β=1:3
+                    momentum_filter = dipole_field_data[μ,α,:] .* dipole_field_minus_data[ν,β,:]*nhat[μ]*nhat[ν]
+                    noise_array[μ,ν,:,:] =.+ transpose(momentum_filter) .* Sqw_data[α,β,:,:]
                 end
             end
-            if isnan(sum(buff))
-                # bad_q = qgrid[qi]
-                # println("NaN at $bad_q")
-            else
-                Nαβ[:,:,qi,wi] .= buff
-            end
         end
-    end
-    out = V2d*(1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)[1,1,1,:]
-    return out, ωs
+    end 
+    noise= (1/Nqs)*(2*0.6745817653/0.05788381806)^2*sum(noise_array;dims=4) # assume g =2
+    return noise[:,:,:,1]
 end
-function noise_spectral_function_LSWT(sys,ωs,n,z;Nq = 10,kT=0,Γ=0.025)
-    dq = 1/Nq
-    qs = -1/2 : dq : 1/2 - dq 
-    qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
-    Nqs = length(qgrid)
-    nhat = norm(n)
-    measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
-    kernel = lorentzian(fwhm=Γ)
-    swt = SpinWaveTheory(sys;measure)
-    res = intensities(swt, qgrid[:]; energies=ωs, kernel,kT)
-    Dμα = Sunny.dipole_field(sys,qgrid[:],z)
-    Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
-    Sqw = res.data
-    Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
-    for (wi,w) ∈ enumerate(ωs)
-        for qi ∈ 1:length(qgrid)
-            buff = zeros(ComplexF64,3,3)
-            for (μ,nμ) ∈ enumerate(nhat)
-                for (ν,nν) ∈ enumerate(nhat)
-                    for α = 1:3
-                        for β = 1:3
-                            buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
-                        end
-                    end
-                end
-            end
-            if isnan(sum(buff))
-                # bad_q = qgrid[qi]
-                # println("NaN at $bad_q")
-            else
-                Nαβ[:,:,qi,wi] .= buff
-            end
-        end
-    end
-    out = (1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)[1,1,1,:]
-    return out
-end
-
 
 """
      CPMGFilter(ωs,τ,N)
