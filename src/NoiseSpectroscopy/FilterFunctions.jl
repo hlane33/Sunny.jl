@@ -43,7 +43,7 @@ to cover the 1BZ. In future we will want to sample more finely at small q. We ca
 """
 
 # function that takes S(q,w) data and calculates Nμν(w)
-function noise_spectral_function(sqw::Intensities,n,z)
+function noise_spectral_function(sqw::Intensities,n,z) #negative values for LSWT not showing!
     nhat = n/norm(n)
     cryst = sqw.crystal
     qpts = sqw.qpts.qs
@@ -68,6 +68,15 @@ function noise_spectral_function(sqw::Intensities,n,z)
     return noise[:,:,:,1]
 end
 
+function phase_variance(noise_matrix,energies,τ;f=RamseyFilter,N=nothing)
+    τ_sec = τ*6.582*10^(-13)
+    total_noise = sum(noise_matrix;dims=[1,2])[1,1,:]
+    δ = 1e-7
+    filter_weight = f(energies.+δ,τ;N)
+    integrand = total_noise.*filter_weight
+    Δω =  (energies[end]-energies[1])/length(energies)
+    return sum(integrand)*Δω/2π
+end
 """
      CPMGFilter(ωs,τ,N)
 
