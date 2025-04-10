@@ -368,7 +368,7 @@ function binned_intensities(sc, params::BinningParameters; kT=nothing, integrate
     if static_mode
         energies = [0.0]
     else
-        energies = sort(available_energies_including_zero(sc; negative_energies=true))
+        energies = available_energies_including_zero(sc; negative_energies=true)
     end
     if static_mode
         res = intensities_static(sc, qpts)
