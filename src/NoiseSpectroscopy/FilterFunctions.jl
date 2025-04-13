@@ -48,8 +48,10 @@ function noise_spectral_function(sqw::Intensities,n,z) #negative values for LSWT
     cryst = sqw.crystal
     qpts = sqw.qpts.qs
     Nqs = length(qpts) 
-    energies = sqw.energies
-    Sqw_data  = reshape(reinterpret(ComplexF64, sqw.data), 3, 3, length(energies), Nqs)
+    # energies = sqw.energies
+    # data_mat = sqw.data
+    data_mat, energies = Sunny.fix_energy_ordering(sqw)
+    Sqw_data  = reshape(reinterpret(ComplexF64, data_mat), 3, 3, length(energies), Nqs)
     # need some checks that sqw.data is right shape for 3×3
     dipole_field_data = dipole_field(cryst,qpts,z)
     dipole_field_minus_data = dipole_field(cryst,-qpts,z)
@@ -68,11 +70,68 @@ function noise_spectral_function(sqw::Intensities,n,z) #negative values for LSWT
     return noise[:,:,:,1]
 end
 
-function phase_variance(noise_matrix,energies,τ;f=RamseyFilter,N=nothing)
-    τ_sec = τ*6.582*10^(-13)
+
+# function that takes S(q,w) data and calculates Nμν(w)
+function partial_noise_spectral_function(sqw::Intensities,z) #negative values for LSWT not showing!
+    cryst = sqw.crystal
+    qpts = sqw.qpts.qs
+    Nqs = length(qpts) 
+    data_mat, energies = Sunny.fix_energy_ordering(sqw)
+    Sqw_data  = reshape(reinterpret(ComplexF64, data_mat), 3, 3, length(energies), Nqs)
+    # need some checks that sqw.data is right shape for 3×3
+    dipole_field_data = dipole_field(cryst,qpts,z)
+    dipole_field_minus_data = dipole_field(cryst,-qpts,z)
+    noise_array = zeros(ComplexF64,3,3,length(energies),Nqs)
+    for μ=1:3
+        for ν=1:3
+            for α=1:3
+                for β=1:3
+                    momentum_filter = dipole_field_data[μ,α,:] .* dipole_field_minus_data[ν,β,:]
+                    noise_array[μ,ν,:,:] =.+ transpose(momentum_filter) .* Sqw_data[α,β,:,:]
+                end
+            end
+        end
+    end 
+    noise= (1/Nqs)*sum(noise_array;dims=4)*(2*0.6745817653/0.05788381806)^2 # assume g =2
+    return noise[:,:,:,1]
+end
+
+
+function fix_energy_ordering(sqw::Intensities)
+    # this is a stopgap function until we get a more sensible ordering of energies
+    pos_energies =  filter(x-> x>= 0, sqw.energies)
+    nEs = length(pos_energies)
+    neg_energies=sqw.energies[nEs+1:end]
+    tot_energies = vcat(neg_energies,pos_energies)
+    sqw_dat= sqw.data
+    pos_part = sqw_dat[1:nEs,:]
+    neg_part = sqw_dat[nEs+1:end,:]
+    tot=vcat(neg_part,pos_part)
+    return tot, tot_energies
+end
+
+function phase_variance(noise_matrix,energies,n,τ;f=RamseyFilter,N=nothing)
+    nhat = n/norm(n)
+    τ_meV = τ*(4.135667696*10^(12)) 
+    total_noise_array = zeros(ComplexF64,length(energies))
+    for μ in 1:3
+        for ν in 1:3
+            total_noise_array .+= noise_matrix[μ,ν,:]*nhat[μ]*nhat[ν]
+        end
+    end
+    δ = 1e-7
+    filter_weight = f(energies.+δ,τ_meV;N)
+    integrand = total_noise_array.*filter_weight
+    Δω =  (energies[end]-energies[1])/length(energies)
+    return sum(integrand)*Δω/2π
+end
+
+
+function phase_variance_old(noise_matrix,energies,τ;f=RamseyFilter,N=nothing)
+    τ_meV = τ*(4.135667696*10^(12)) 
     total_noise = sum(noise_matrix;dims=[1,2])[1,1,:]
     δ = 1e-7
-    filter_weight = f(energies.+δ,τ;N)
+    filter_weight = f(energies.+δ,τ_meV;N)
     integrand = total_noise.*filter_weight
     Δω =  (energies[end]-energies[1])/length(energies)
     return sum(integrand)*Δω/2π
