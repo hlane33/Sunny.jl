@@ -32,45 +32,6 @@ function dipole_field(cryst::Crystal,qs,z)
     return H
 end
 
-"""
-     noise_spectral_function(sys,ωs,n,z)
-
-Calculates the noise spectral function at distance z from a 2d magnetic plane. qs is provided in the r.l.u of the crystal. The crystal is assumed
-to be defined such that a,b ⟂ z. The momentum filter function is included in this definition with the appropriate terms for an NV oriented along the
-direction n = (nx,ny,nz). The dipolar field diverges at q=[0,0,0], currently we skip this point. In future we can pick some sensible value here. The 
-true value will depend on the size/shape of the sample. The integral is performed on a grid in the 2d Brillouin zone. Currently a Nq × Nq grid is built
-to cover the 1BZ. In future we will want to sample more finely at small q. We can probably restrict the integral to a small area around q=[0,0,0]. 
-"""
-
-# function that takes S(q,w) data and calculates Nμν(w)
-function noise_spectral_function(sqw::Intensities,n,z) #negative values for LSWT not showing!
-    nhat = n/norm(n)
-    cryst = sqw.crystal
-    qpts = sqw.qpts.qs
-    Nqs = length(qpts) 
-    # energies = sqw.energies
-    # data_mat = sqw.data
-    data_mat, energies = Sunny.fix_energy_ordering(sqw)
-    Sqw_data  = reshape(reinterpret(ComplexF64, data_mat), 3, 3, length(energies), Nqs)
-    # need some checks that sqw.data is right shape for 3×3
-    dipole_field_data = dipole_field(cryst,qpts,z)
-    dipole_field_minus_data = dipole_field(cryst,-qpts,z)
-    noise_array = zeros(ComplexF64,3,3,length(energies),Nqs)
-    for μ=1:3
-        for ν=1:3
-            for α=1:3
-                for β=1:3
-                    momentum_filter = dipole_field_data[μ,α,:] .* dipole_field_minus_data[ν,β,:]*nhat[μ]*nhat[ν]
-                    noise_array[μ,ν,:,:] =.+ transpose(momentum_filter) .* Sqw_data[α,β,:,:]
-                end
-            end
-        end
-    end 
-    noise= (1/Nqs)*(2*0.6745817653/0.05788381806)^2*sum(noise_array;dims=4) # assume g =2
-    return noise[:,:,:,1]
-end
-
-
 # function that takes S(q,w) data and calculates Nμν(w)
 function partial_noise_spectral_function(sqw::Intensities,z) #negative values for LSWT not showing!
     cryst = sqw.crystal
@@ -126,6 +87,44 @@ function phase_variance(noise_matrix,energies,n,τ;f=RamseyFilter,N=nothing)
     return sum(integrand)*Δω/2π
 end
 
+
+"""
+     noise_spectral_function(sys,ωs,n,z)
+
+Calculates the noise spectral function at distance z from a 2d magnetic plane. qs is provided in the r.l.u of the crystal. The crystal is assumed
+to be defined such that a,b ⟂ z. The momentum filter function is included in this definition with the appropriate terms for an NV oriented along the
+direction n = (nx,ny,nz). The dipolar field diverges at q=[0,0,0], currently we skip this point. In future we can pick some sensible value here. The 
+true value will depend on the size/shape of the sample. The integral is performed on a grid in the 2d Brillouin zone. Currently a Nq × Nq grid is built
+to cover the 1BZ. In future we will want to sample more finely at small q. We can probably restrict the integral to a small area around q=[0,0,0]. 
+"""
+
+# function that takes S(q,w) data and calculates Nμν(w)
+function noise_spectral_function(sqw::Intensities,n,z) #negative values for LSWT not showing!
+    nhat = n/norm(n)
+    cryst = sqw.crystal
+    qpts = sqw.qpts.qs
+    Nqs = length(qpts) 
+    # energies = sqw.energies
+    # data_mat = sqw.data
+    data_mat, energies = Sunny.fix_energy_ordering(sqw)
+    Sqw_data  = reshape(reinterpret(ComplexF64, data_mat), 3, 3, length(energies), Nqs)
+    # need some checks that sqw.data is right shape for 3×3
+    dipole_field_data = dipole_field(cryst,qpts,z)
+    dipole_field_minus_data = dipole_field(cryst,-qpts,z)
+    noise_array = zeros(ComplexF64,3,3,length(energies),Nqs)
+    for μ=1:3
+        for ν=1:3
+            for α=1:3
+                for β=1:3
+                    momentum_filter = dipole_field_data[μ,α,:] .* dipole_field_minus_data[ν,β,:]*nhat[μ]*nhat[ν]
+                    noise_array[μ,ν,:,:] =.+ transpose(momentum_filter) .* Sqw_data[α,β,:,:]
+                end
+            end
+        end
+    end 
+    noise= (1/Nqs)*(2*0.6745817653/0.05788381806)^2*sum(noise_array;dims=4) # assume g =2
+    return noise[:,:,:,1]
+end
 
 function phase_variance_old(noise_matrix,energies,τ;f=RamseyFilter,N=nothing)
     τ_meV = τ*(4.135667696*10^(12)) 
