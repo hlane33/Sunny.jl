@@ -54,7 +54,7 @@ function partial_noise_spectral_function(sqw::Intensities,z) #negative values fo
         end
     end 
     noise= (1/Nqs)*sum(noise_array;dims=4)*(2*0.6745817653/0.05788381806)^2 # assume g =2
-    return noise[:,:,:,1]
+    return noise[:,:,:,1], energies
 end
 
 
@@ -83,7 +83,7 @@ function phase_variance(noise_matrix,energies,n,τ;f=RamseyFilter,N=nothing)
     δ = 1e-7
     filter_weight = f(energies.+δ,τ_meV;N)
     integrand = total_noise_array.*filter_weight
-    Δω =  (energies[end]-energies[1])/length(energies)
+    Δω =  (maximum(energies)-minimum(energies))/length(energies)
     return sum(integrand)*Δω/2π
 end
 
