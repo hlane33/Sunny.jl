@@ -14,6 +14,7 @@ import Optim
 import JLD2
 import HCubature: hcubature
 import TensorOperations: @tensor
+import NLsolve: nlsolve, converged
 
 # Specific to Symmetry/
 import CrystalInfoFramework as CIF
@@ -110,6 +111,7 @@ include("SpinWaveTheory/ContinuedFraction.jl")
 include("SpinWaveTheory/Perturbative.jl")
 include("SpinWaveTheory/HamiltonianDipoleNLSW.jl")
 include("SpinWaveTheory/DispersionNLSW.jl")
+include("SpinWaveTheory/SelfConsistentNLSWT.jl")
 export SpinWaveTheory, excitations, excitations!, dispersion, intensities, intensities_bands,
     intensities_static
 
