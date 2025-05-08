@@ -224,7 +224,7 @@ function calculate_mean_field_values_lswt(swt::SpinWaveTheory; opts...)
 end
 
 # The opts should contain: 1. opts for hcubature 2. opts for nlsolve
-function solve_self_cosistent_nlswt!(scnlswt::SelfConsistentNLSWT; mean_field_values::Vector{ComplexF64} = ComplexF64[], hcubature_opts::NamedTuple=(;), nlsolve_opts::NamedTuple=(;))
+function solve_self_consistent_nlswt!(scnlswt::SelfConsistentNLSWT; mean_field_values::Vector{ComplexF64} = ComplexF64[], hcubature_opts::NamedTuple=(;), nlsolve_opts::NamedTuple=(;))
     (; swt) = scnlswt
     (; real_space_quartic_vertices) = scnlswt
     if isempty(mean_field_values)
