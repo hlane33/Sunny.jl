@@ -242,6 +242,7 @@ function solve_self_cosistent_nlswt!(scnlswt::SelfConsistentNLSWT; mean_field_va
     update_mean_field_values!(scnlswt, ret.zero)
 end
 
+# TODO: Have a common interface with LSWT module for all code below
 function excitations_scnlswt!(T, tmp1, tmp2, scnlswt::SelfConsistentNLSWT, q)
     (; swt) = scnlswt
     L = nbands(swt)
@@ -276,4 +277,103 @@ function dispersion_scnlswt(scnlswt::SelfConsistentNLSWT, qpts)
         view(disp, :, iq) .= view(excitations_scnlswt(scnlswt, q)[1], 1:L)
     end
     return reshape(disp, L, size(qpts.qs)...)
+end
+
+# TODO: Add the quantum corrections to the operators as well. At this moment, only the quantum corrections to the magnon eigenstates are included.
+function intensities_bands_scnlswt(scnlswt::SelfConsistentNLSWT, qpts; kT=0, with_negative=false)
+    (; swt) = scnlswt
+    (; sys, measure) = swt
+    isempty(measure.observables) && error("No observables! Construct SpinWaveTheory with a `measure` argument.")
+    with_negative && error("Option `with_negative=true` not yet supported.")
+
+    qpts = convert(AbstractQPoints, qpts)
+    cryst = orig_crystal(sys)
+
+    # Number of (magnetic) atoms in magnetic cell
+    @assert sys.dims == (1,1,1)
+    Na = nsites(sys)
+    # Number of chemical cells in magnetic cell
+    Ncells = Na / natoms(cryst)
+    # Number of quasiparticle modes
+    L = nbands(swt)
+    # Number of wavevectors
+    Nq = length(qpts.qs)
+
+    # Temporary storage for pair correlations
+    Nobs = num_observables(measure)
+    Ncorr = num_correlations(measure)
+    corrbuf = zeros(ComplexF64, Ncorr)
+
+    # Preallocation
+    T = zeros(ComplexF64, 2L, 2L)
+    H = zeros(ComplexF64, 2L, 2L)
+    H_nlswt = zeros(ComplexF64, 2L, 2L)
+    Avec_pref = zeros(ComplexF64, Nobs, Na)
+    disp = zeros(Float64, L, Nq)
+    intensity = zeros(eltype(measure), L, Nq)
+
+
+    for (iq, q) in enumerate(qpts.qs)
+        q_global = cryst.recipvecs * q
+        view(disp, :, iq) .= view(excitations_scnlswt!(T, H, H_nlswt, scnlswt, q), 1:L)
+
+        for i in 1:Na, μ in 1:Nobs
+            r_global = global_position(sys, (1,1,1,i)) # + offsets[μ,i]
+            ff = get_swt_formfactor(measure, μ, i)
+            Avec_pref[μ, i] = exp(- im * dot(q_global, r_global))
+            Avec_pref[μ, i] *= compute_form_factor(ff, norm2(q_global))
+        end
+
+        Avec = zeros(ComplexF64, Nobs)
+
+        # Fill `intensity` array
+        for band in 1:L
+            fill!(Avec, 0)
+            if sys.mode == :SUN
+                data = swt.data::SWTDataSUN
+                N = sys.Ns[1]
+                t = reshape(view(T, :, band), N-1, Na, 2)
+                for i in 1:Na, μ in 1:Nobs
+                    O = data.observables_localized[μ, i]
+                    for α in 1:N-1
+                        Avec[μ] += Avec_pref[μ, i] * (O[α, N] * t[α, i, 2] + O[N, α] * t[α, i, 1])
+                    end
+                end
+            else
+                @assert sys.mode in (:dipole, :dipole_uncorrected)
+                data = swt.data::SWTDataDipole
+                t = reshape(view(T, :, band), Na, 2)
+                for i in 1:Na, μ in 1:Nobs
+                    O = data.observables_localized[μ, i]
+                    # This is the Avec of the two transverse and one
+                    # longitudinal directions in the local frame. (In the
+                    # local frame, z is longitudinal, and we are computing
+                    # the transverse part only, so the last entry is zero)
+                    displacement_local_frame = SA[t[i, 2] + t[i, 1], im * (t[i, 2] - t[i, 1]), 0.0]
+                    Avec[μ] += Avec_pref[μ, i] * (data.sqrtS[i]/√2) * (O' * displacement_local_frame)[1]
+                end
+            end
+
+            map!(corrbuf, measure.corr_pairs) do (α, β)
+                Avec[α] * conj(Avec[β]) / Ncells
+            end
+            intensity[band, iq] = thermal_prefactor(disp[band]; kT) * measure.combiner(q_global, corrbuf)
+        end
+    end
+
+    disp = reshape(disp, L, size(qpts.qs)...)
+    intensity = reshape(intensity, L, size(qpts.qs)...)
+    return BandIntensities(cryst, qpts, disp, intensity)
+end
+
+function intensities_scnlswt!(data, scnlswt::SelfConsistentNLSWT, qpts; energies, kernel::AbstractBroadening, kT=0)
+    @assert size(data) == (length(energies), size(qpts.qs)...)
+    bands = intensities_bands_scnlswt(scnlswt, qpts; kT)
+    @assert eltype(bands) == eltype(data)
+    broaden!(data, bands; energies, kernel)
+    return Intensities(bands.crystal, bands.qpts, collect(Float64, energies), data)
+end
+
+function intensities_scnlswt(scnlswt::SelfConsistentNLSWT, qpts; energies, kernel::AbstractBroadening, kT=0)
+    return broaden(intensities_bands_scnlswt(scnlswt, qpts; kT); energies, kernel)
 end
