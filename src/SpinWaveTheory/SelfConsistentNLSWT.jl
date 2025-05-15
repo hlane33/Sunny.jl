@@ -28,7 +28,7 @@ function Base.show(io::IO, ::MIME"text/plain", scnlswt::SelfConsistentNLSWT)
     end
 end
 
-function swt_hamiltonian_dipole_nlswt!(H::Matrix{ComplexF64}, scnlswt::SelfConsistentNLSWT, q_reshaped::Vec3)
+function swt_hamiltonian_dipole_nlsw!(H::Matrix{ComplexF64}, scnlswt::SelfConsistentNLSWT, q_reshaped::Vec3)
     (; swt, mean_field_values, real_space_quartic_vertices) = scnlswt
     (; sys) = swt
     (; sys, data) = swt
