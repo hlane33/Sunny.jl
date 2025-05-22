@@ -1,11 +1,11 @@
 function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_index::CartesianIndex{3})
     (; swt, clustersize) = npt
-    (; sys, data) = swt
+    (; sys, data, measure) = swt
     (; observables_localized) = data
     cryst = orig_crystal(sys)
     q_global = cryst.recipvecs * q
 
-    num_obs = num_observables(npt.swt.measure)
+    num_obs = num_observables(swt.measure)
 
     Nm = length(sys.dipoles)
     N  = sys.Ns[1]
@@ -22,10 +22,12 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_inde
     f0s = zeros(ComplexF64, num_1ps+num_2ps, num_obs)
 
     # Note that: in Sunny.jl, the convention for the dynamical spin structure factor is normalized to the number of unit cells instead of the number of sites. As a result, we do not include the 1/√Nm factor in for the initial state.
-    Avec_pref = zeros(ComplexF64, Nm)
-    for i in 1:Nm
+    Avec_pref = zeros(ComplexF64, num_obs, Nm)
+    for i in 1:Nm, μ in 1:num_obs
         r_global = global_position(sys, (1,1,1,i))
-        Avec_pref[i] = exp(1im * dot(q_global, r_global))
+        ff = get_swt_formfactor(measure, μ, i)
+        Avec_pref[μ, i] = exp(1im * dot(q_global, r_global))
+        Avec_pref[μ, i] *= compute_form_factor(ff, norm2(q_global))
     end
     
     Vq = npt.Vps[:, :, q_index]
@@ -37,7 +39,7 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_inde
                 for μ in 1:num_obs
                     O = observables_localized[μ, i]
                     for α in 1:N-1
-                        f0s[band, μ] += Avec_pref[i] * (O[α, N] * conj(vq[α, i, 1]) + O[N, α] * conj(vq[α, i, 2]))
+                        f0s[band, μ] += Avec_pref[μ, i] * (O[α, N] * conj(vq[α, i, 1]) + O[N, α] * conj(vq[α, i, 2]))
                     end
                 end
             end
@@ -57,7 +59,7 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_inde
                     O = observables_localized[μ, i]
                     for α in 1:N-1
                         for β in 1:N-1
-                            f0s[is, μ] += Avec_pref[i] * (O[α, β] - O[N, N] * δ(α, β)) * (conj(vq1[α, i, 1]) * conj(vq2[β, i, 2]) + conj(vq1[β, i, 2]) * conj(vq2[α, i, 1])) / (√Nu * ζ)
+                            f0s[is, μ] += Avec_pref[μ, i] * (O[α, β] - O[N, N] * δ(α, β)) * (conj(vq1[α, i, 1]) * conj(vq2[β, i, 2]) + conj(vq1[β, i, 2]) * conj(vq2[α, i, 1])) / (√Nu * ζ)
                         end
                     end
                 end
@@ -72,7 +74,7 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_inde
                 for μ in 1:num_obs
                     displacement_local_frame = conj([vq[i, 2] + vq[i, 1], im * (vq[i, 2] - vq[i, 1]), 0.0])
                     O_local_frame = observables_localized[μ, i]
-                    f0s[band, μ] += Avec_pref[i] * sqrt_halfS * (O_local_frame' * displacement_local_frame)
+                    f0s[band, μ] += Avec_pref[μ, i] * sqrt_halfS * (O_local_frame' * displacement_local_frame)
                 end
             end
         end
@@ -88,7 +90,7 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_inde
             for i in 1:Nm
                 for μ in 1:num_obs
                     O = observables_localized[μ, i]
-                    f0s[is, μ] += Avec_pref[i] * O[3] * (conj(vq1[i, 2])*conj(vq2[i, 1]) + conj(vq1[i, 1])*conj(vq2[i, 2]) )  / (√Nu * ζ)
+                    f0s[is, μ] += Avec_pref[μ, i] * O[3] * (conj(vq1[i, 2])*conj(vq2[i, 1]) + conj(vq1[i, 1])*conj(vq2[i, 2]) )  / (√Nu * ζ)
                 end
             end
         end
