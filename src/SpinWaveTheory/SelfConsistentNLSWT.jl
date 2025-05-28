@@ -145,7 +145,7 @@ function self_consistent_nlswt!(f, x, scnlswt::SelfConsistentNLSWT, hcubature_op
         di, dj = bond.i, bond.j
         ret = hcubature((0,0,0), (1,1,1); hcubature_opts...) do k
             swt_hamiltonian_dipole!(H, swt, Vec3(k))
-            swt_hamiltonian_dipole_nlswt!(H_buf, scnlswt, Vec3(k))
+            swt_hamiltonian_dipole_nlsw!(H_buf, scnlswt, Vec3(k))
             @. H += H_buf
             bogoliubov!(V, H)
 
@@ -250,7 +250,7 @@ function excitations_scnlswt!(T, tmp1, tmp2, scnlswt::SelfConsistentNLSWT, q)
 
     q_reshaped = to_reshaped_rlu(swt.sys, q)
     dynamical_matrix!(tmp1, swt, q_reshaped)
-    swt_hamiltonian_dipole_nlswt!(tmp2, scnlswt, q_reshaped)
+    swt_hamiltonian_dipole_nlsw!(tmp2, scnlswt, q_reshaped)
     @. tmp1 += tmp2
     try
         return bogoliubov!(T, tmp1)
