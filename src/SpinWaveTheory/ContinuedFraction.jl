@@ -300,7 +300,7 @@ function intensities_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::
     q2 = norm2(q_global)
 
     ret = zeros(length(ωs))
-    if iszero(q2)
+    if q2 < 1e-6
         # Later we may add the 2/3 factor to be consistent with the Sunny main
         for i in 1:num_obs
             @. ret += ret_buff[:, i]
