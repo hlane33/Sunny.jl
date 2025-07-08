@@ -56,9 +56,9 @@ let
     ops = OpSum()
     lattice = triangular_lattice(Nx, Ny; yperiodic=yperiodic)
     num_bonds = length(lattice)
+    print(lattice)
     println("Number of bonds in the $Nx×$Ny lattice with yperiodic=$yperiodic: $num_bonds")
 
-    print(lattice[1])
 
     # square lattice also available:
     # lattice = square_lattice(Nx, Ny; yperiodic=yperiodic)
@@ -87,7 +87,7 @@ let
 
     # Set the parameters controlling the accuracy of the DMRG
     # calculation for each DMRG sweep. 
-    nsweeps = 5
+    nsweeps = 10
     maxdim = [10, 20, 100, 100, 200]
     cutoff = [1E-8]
     noise = 1E-7,1E-8,0.0

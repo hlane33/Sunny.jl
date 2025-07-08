@@ -31,11 +31,11 @@ end
 
 # Default configurations for different lattice types
 function default_triangular_config()
-    return LatticeConfig(TRIANGULAR, 8, 8, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
+    return LatticeConfig(TRIANGULAR, 8, 8, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
 end
 
 function default_square_config()
-    return LatticeConfig(SQUARE, 4, 4, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
+    return LatticeConfig(SQUARE, 5, 5, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
 end
 
 function default_chain_config()
@@ -43,7 +43,7 @@ function default_chain_config()
 end
 
 function default_dmrg_config()
-    return DMRGConfig(5, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
+    return DMRGConfig(10, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
 end
 
 """
@@ -149,9 +149,12 @@ function cartind_to_label(cartind::CartesianIndex, dims; perm = nothing)
     # perm will be some rule to move from conventional labelling i.e.
     # 1 to Lx*Ly where we go 1→Lx first i.e. (2,1) → 2 to the scheme
     # of choice e.g. snake
-    nx, ny = cartind[1], cartind[2]
+    x, y = cartind[1], cartind[2]  # Now x=column, y=row
     Lx, Ly = dims[1], dims[2]
-    n = (ny-1)*Lx + nx
+    n = (x-1)*Ly + y  # Match square_lattice's formula
+    
+    # Apply permutation if needed
+    perm === nothing ? n : perm(n)
     
     # Apply permutation if specified
     if perm !== nothing
@@ -163,35 +166,6 @@ function cartind_to_label(cartind::CartesianIndex, dims; perm = nothing)
     end
 end
 
-"""
-Helper function to get the displacement vector between two sites
-should account for wrapping the periodic bonds
-"""
-function get_displacement_vector(site1, site2, sys, dims, config)
-    pbc = (true,!config.periodic_bc,true)
-    crystal = sys.crystal
-    # Get positions in fractional coordinates
-    pos1 = Sunny.position(sys,site1)
-    pos2 = Sunny.position(sys,site2)
-    
-    # Convert to Cartesian coordinates
-    r1 = crystal.latvecs * pos1
-    r2 = crystal.latvecs * pos2
-    
-    # Calculate raw displacement
-    Δr = r2 - r1
-    Δr = collect(Δr)
-    
-    # Apply minimum image convention for periodic dimensions
-    for dim in 1:3
-        if pbc[dim] && dims[dim] > 1
-            L = norm(crystal.latvecs[:,dim]) * dims[dim]
-            Δr[dim] = mod(Δr[dim] + L/2, L) - L/2
-        end
-    end
-    
-    return Δr
-end
 
 function get_unique_bonds(sys::System, config::LatticeConfig)
     pbc = (true,!config.periodic_bc,true)
@@ -208,19 +182,18 @@ function get_unique_bonds(sys::System, config::LatticeConfig)
             siteᵢ = sites[j]
             siteⱼ = Sunny.bonded_site(siteᵢ, bond, sys.dims)
             
-            Δr = get_displacement_vector(siteᵢ, siteⱼ, sys, sys.dims, config)
-            
             push!(bond_pairs, (
                 cartind_to_label(siteᵢ, sys.dims),
                 cartind_to_label(siteⱼ, sys.dims),
-                Δr,
                 pc.bilin
             ))
         end
     end
     print(length(unique(bond_pairs)), " unique bonds found.\n")
     # Remove duplicates by converting to a set
+    print(bond_pairs)
     return unique(bond_pairs)
+    
 end
 
 """
@@ -234,7 +207,7 @@ function organize_bonds_for_itensor(bond_pairs)
     # Group bonds by coupling strength
     coupling_groups = Dict{Float64, Vector{Tuple{Int,Int}}}()
     
-    for (i, j, disp, coupling) in bond_pairs
+    for (i, j, coupling) in bond_pairs
         if !haskey(coupling_groups, coupling)
             coupling_groups[coupling] = Vector{Tuple{Int,Int}}()
         end
@@ -269,7 +242,7 @@ function build_hamiltonian_from_bonds(bond_pairs, config::LatticeConfig)
     os = OpSum()
     
     # Add all bond terms (works for s dot s terms)
-    for (i, j, disp, coupling) in bond_pairs
+    for (i, j, coupling) in bond_pairs
         # Heisenberg interaction terms
         os += coupling * 1.0, "Sz", i, "Sz", j
         os += coupling * 0.5, "S+", i, "S-", j
@@ -477,7 +450,6 @@ sq_config = default_square_config()
 energy_sq, psi_sq, H_sq, sites_sq, bonds_sq, couplings_sq = main_calculation(sq_config)
 analyze_bond_structure(bonds_sq, couplings_sq, sq_config)
 """
-
 
 # Triangular lattice dmrg calc
 println("=== TRIANGULAR LATTICE ===")
