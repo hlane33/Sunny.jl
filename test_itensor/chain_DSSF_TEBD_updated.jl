@@ -104,7 +104,7 @@ function main()
     15,                     # nsweeps
     [10, 20, 100, 100, 200],# maxdim
     [1E-10],                   # cutoff
-    (0.0,) # noise
+    (0.0,) # noise is empty
     )
 
     custom_chain_config = LatticeConfig(CHAIN_1D, N, 1, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
