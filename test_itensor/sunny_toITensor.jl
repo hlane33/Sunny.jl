@@ -39,7 +39,7 @@ function default_square_config()
 end
 
 function default_chain_config()
-    return LatticeConfig(CHAIN_1D, 16, 1, 1, 1.0, 3/2, 1.0, 0.5, 0.0, false)
+    return LatticeConfig(CHAIN_1D, 16, 1, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
 end
 
 function default_dmrg_config()
@@ -237,7 +237,7 @@ function build_hamiltonian_from_bonds(bond_pairs, config::LatticeConfig)
         N = config.Lx * config.Ly
     end
     
-    sites = siteinds("S=1/2", N; conserve_qns=true)
+    sites = siteinds("S=1/2", N; conserve_qns=false)
     
     os = OpSum()
     
@@ -268,6 +268,7 @@ function create_initial_state(sites, config::LatticeConfig)
         # For triangular lattice, might want a more complex initial state
         state = [isodd(n) ? "Up" : "Dn" for n=1:N]
     else
+        #might want some 'if random state'
         # Standard Neel state for square and 1D
         state = [isodd(n) ? "Up" : "Dn" for n=1:N]
     end
@@ -402,7 +403,7 @@ function main_calculation(config::LatticeConfig = default_triangular_config(),
     # 1. Set up the crystal structure
     crystal = create_crystal(config)
     if config.lattice_type != CHAIN_1D
-        view_crystal(crystal; ndims=2)
+        view_crystal(crystal)
     end
     
     # 2. Set up the Sunny system
@@ -422,9 +423,14 @@ function main_calculation(config::LatticeConfig = default_triangular_config(),
     # 7. Build the Hamiltonian directly from bond pairs
     H, sites = build_hamiltonian_from_bonds(bond_pairs, config)
 
-    # 8. Create initial state
-    psi0 = create_initial_state(sites, config)
-    
+    # 8. Create initial state (MAKE THIS BIT MORE GENERAL)
+    if config.lattice_type == CHAIN_1D
+        linkdims = 10
+        psi0 = random_mps(sites;linkdims)
+    else
+        psi0 = create_initial_state(sites, config)
+    end
+   
     # 9. Calculate initial energy
     initial_energy = inner(psi0, Apply(H, psi0))
     println("Initial energy = ", initial_energy)
@@ -443,13 +449,14 @@ function main_calculation(config::LatticeConfig = default_triangular_config(),
 end
 
 
+
 """
 # Square lattice
 println("\n=== SQUARE LATTICE ===")
 sq_config = default_square_config()
 energy_sq, psi_sq, H_sq, sites_sq, bonds_sq, couplings_sq = main_calculation(sq_config)
 analyze_bond_structure(bonds_sq, couplings_sq, sq_config)
-"""
+
 
 # Triangular lattice dmrg calc
 println("=== TRIANGULAR LATTICE ===")
@@ -457,3 +464,4 @@ tri_config = default_triangular_config()
 energy_tri, psi_tri, H_tri, sites_tri, bonds_tri, couplings_tri = main_calculation(tri_config)
 # Analyze the bond structures
 analyze_bond_structure(bonds_tri, couplings_tri, tri_config)
+"""
