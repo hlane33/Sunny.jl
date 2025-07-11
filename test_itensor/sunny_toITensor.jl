@@ -5,6 +5,7 @@ using Sunny, ITensors, ITensorMPS, GLMakie
     TRIANGULAR
     SQUARE
     CHAIN_1D
+    HONEYCOMB
 end
       
 # Configuration structure to hold all parameters
@@ -42,6 +43,10 @@ function default_chain_config()
     return LatticeConfig(CHAIN_1D, 16, 1, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
 end
 
+function default_honeycomb_config()
+    return LatticeConfig(HONEYCOMB, 8, 8, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
+end
+
 function default_dmrg_config()
     return DMRGConfig(10, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
 end
@@ -77,9 +82,18 @@ function create_crystal(config::LatticeConfig)
     elseif config.lattice_type == SQUARE
         latvecs = lattice_vectors(config.a, config.a, 1.0, 90, 90, 90)
         return Crystal(latvecs, [[0, 0, 0]])
-    else  # CHAIN_1D
+    elseif config.lattice_type == CHAIN_1D  
         latvecs = lattice_vectors(config.a, 10*config.a, 10*config.a, 90, 90, 90)
         return Crystal(latvecs, [[0, 0, 0]])
+    elseif config.lattice_type == HONEYCOMB
+        latvecs = lattice_vectors(3*config.a/2, config.a*sqrt(3)/2, 1.0, 90, 90, 120)
+        crystal = Crystal(latvecs, [[0, 0, 0], [1/3, 2/3, 0]])
+        fig = view_crystal(crystal;ndims=2)
+        display(fig)
+        return crystal  
+
+    else
+        error("Unsupported lattice type: $(config.lattice_type)")
     end
 end
 
@@ -99,11 +113,22 @@ function get_lattice_bonds(config::LatticeConfig)
         nn_bonds = [Bond(1, 1, [1, 0, 0]), Bond(1, 1, [0, 1, 0])]
         nnn_bonds = [Bond(1, 1, [1, 1, 0]), Bond(1, 1, [1, -1, 0])]  # Diagonal
         return nn_bonds, nnn_bonds
-    else  # CHAIN_1D
+    elseif config.lattice_type == CHAIN_1D
         # 1D chain bonds
         nn_bonds = [Bond(1, 1, [1, 0, 0])]
         nnn_bonds = [Bond(1, 1, [2, 0, 0])]  # Next-nearest neighbor
         return nn_bonds, nnn_bonds
+    elseif config.lattice_type == HONEYCOMB
+        # Honeycomb lattice bonds
+        nn_bonds = [Bond(1, 2, [0, 0, 0]),   # A → B (intra-cell)
+        Bond(1, 2, [1, 0, 0]),   # A → B (adjacent cell in x-direction)
+        Bond(1, 2, [0, 1, 0])]   # A → B (adjacent cell in y-direction)
+
+        nnn_bonds = []
+    
+        return nn_bonds, nnn_bonds
+    else
+        error("Unsupported lattice type: $(config.lattice_type)")
     end
 end
 
@@ -115,6 +140,8 @@ Don't like this: shouldnt need to for loop over the bonds
 function setup_sunny_system(crystal, config::LatticeConfig)
     pbc = (true,!config.periodic_bc,true)
     sys = System(crystal, [1 => Moment(; s=config.s, g=2)], :dipole)
+
+
 
     
     # Get the appropriate bonds for this lattice type
@@ -465,3 +492,9 @@ energy_tri, psi_tri, H_tri, sites_tri, bonds_tri, couplings_tri = main_calculati
 # Analyze the bond structures
 analyze_bond_structure(bonds_tri, couplings_tri, tri_config)
 """
+
+#Honeycomb lattice
+println("=== HONEYCOMB LATTICE ===")
+honeycomb_config = default_honeycomb_config()
+energy_honeycomb, psi_honeycomb, H_honeycomb, sites_honeycomb, bonds_honeycomb, couplings_honeycomb = main_calculation(honeycomb_config)
+analyze_bond_structure(bonds_honeycomb, couplings_honeycomb, honeycomb_config)
