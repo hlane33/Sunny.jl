@@ -26,18 +26,16 @@ function compute_G(N, ψ, ϕ, H, sites, η, ts, tstep, cutoff, maxdim)
     # Time evolution
     for (ti, t) in enumerate(ts[2:end])
         # Evolve both states using TDVP
-        ϕ = tdvp(H, -tstep/2, ϕ;
-                time_step=-tstep/2,
+        ϕ = tdvp(H, -tstep*im/2, ϕ;
+                time_step=-tstep*im/2,
                 nsteps=1,
-                nsweeps=4,
                 maxdim, 
                 cutoff,
                 outputlevel=0)
         
-        ψ = tdvp(H, -tstep/2, ψ; 
-                time_step=-tstep/2,
+        ψ = tdvp(H, -tstep*im/2, ψ;
+                time_step=-tstep*im/2,
                 nsteps=1,
-                nsweeps=4,
                 maxdim, 
                 cutoff,
                 outputlevel=0)
@@ -120,7 +118,7 @@ function main()
               ylabel = "Energy (meV)",
               title = "S=1/2 AFM DMRG/TDVP")
     heatmap!(ax, allowed_qs, energies, out,
-             colorrange = (0, 0.2 * maximum(out)))
+             colorrange = (0, 0.5 * maximum(out)))
     ylims!(ax, 0, 5)
     return fig
 end
