@@ -29,10 +29,23 @@ struct DMRGConfig
     noise::Tuple{Vararg{Float64}}
 end
 
+# Structure to hold calculation results for easy access
+struct DMRGResults
+    energy::Float64
+    psi::MPS
+    H::MPO
+    sites::Vector
+    bond_pairs::Vector
+    coupling_groups::Dict
+    config::LatticeConfig
+    N_basis::Int
+    crystal::Any  # Sunny Crystal object
+    sys::Any      # Sunny System object
+end
 
 # Default configurations for different lattice types
 function default_triangular_config()
-    return LatticeConfig(TRIANGULAR, 8, 8, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
+    return LatticeConfig(TRIANGULAR, 4, 4, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
 end
 
 function default_square_config()
@@ -44,32 +57,11 @@ function default_chain_config()
 end
 
 function default_honeycomb_config()
-    return LatticeConfig(HONEYCOMB, 8, 8, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
+    return LatticeConfig(HONEYCOMB, 3, 3, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
 end
 
 function default_dmrg_config()
-    return DMRGConfig(10, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
-end
-
-"""
-Maps a 2D lattice to a 1D index using snake ordering for 2D or simple linear for 1D.
-Returns the site index for given x and y coordinates.
-    NOT CURRENTLY CALLED
-"""
-function get_site_index(x::Int, y::Int, config::LatticeConfig)
-    if config.lattice_type == CHAIN_1D
-        return x  # Simple linear indexing for 1D
-    elseif config.lattice_type == TRIANGULAR
-        # Snake ordering for triangular lattice
-        if y % 2 == 1  # Odd rows: left-to-right
-            return (y - 1) * config.Lx + x
-        else            # Even rows: right-to-left
-            return (y - 1) * config.Lx + (config.Lx - x + 1)
-        end
-    else  # SQUARE or other 2D lattices
-        # Standard row-major ordering
-        return (y - 1) * config.Lx + x
-    end
+    return DMRGConfig(5, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
 end
 
 """
@@ -86,12 +78,11 @@ function create_crystal(config::LatticeConfig)
         latvecs = lattice_vectors(config.a, 10*config.a, 10*config.a, 90, 90, 90)
         return Crystal(latvecs, [[0, 0, 0]])
     elseif config.lattice_type == HONEYCOMB
-        latvecs = lattice_vectors(3*config.a/2, config.a*sqrt(3)/2, 1.0, 90, 90, 120)
-        crystal = Crystal(latvecs, [[0, 0, 0], [1/3, 2/3, 0]])
-        fig = view_crystal(crystal;ndims=2)
-        display(fig)
-        return crystal  
-
+        latvecs = lattice_vectors(config.a, config.a, 1.0, 90, 90, 120)
+        # Two atoms per unit cell for honeycomb
+        crystal = Crystal(latvecs, [[0, 0, 0], [0.5, 1/(2*sqrt(3)),0]]) #could add spacegroup = 191-- does weird things
+        print(crystal)
+        return crystal
     else
         error("Unsupported lattice type: $(config.lattice_type)")
     end
@@ -99,34 +90,27 @@ end
 
 """
 Sets up bonds based on lattice type.
-Doesnt currently generalise to multi atom basis
-Just an object of bonds for different lattice types
 """
 function get_lattice_bonds(config::LatticeConfig)
     if config.lattice_type == TRIANGULAR
-        # Triangular lattice bonds
-        nn_bonds = [Bond(1, 1, [1, 0, 0]), Bond(1, 1, [0, 1, 0]), Bond(1, 1, [-1, 1, 0])]
-        nnn_bonds = [Bond(1, 1, [2, 0, 0]), Bond(1, 1, [1, 1, 0]), Bond(1, 1, [-1, 2, 0])]
-        return nn_bonds, nnn_bonds
+        nn_bond = Bond(1, 1, [1, 0, 0])
+        nnn_bond = Bond(1, 1, [2, 0, 0])
+        return nn_bond, nnn_bond
     elseif config.lattice_type == SQUARE
-        # Square lattice bonds
-        nn_bonds = [Bond(1, 1, [1, 0, 0]), Bond(1, 1, [0, 1, 0])]
-        nnn_bonds = [Bond(1, 1, [1, 1, 0]), Bond(1, 1, [1, -1, 0])]  # Diagonal
-        return nn_bonds, nnn_bonds
+        nn_bond = Bond(1, 1, [1, 0, 0])
+        nnn_bond = Bond(1, 1, [1, 1, 0])
+        return nn_bond, nnn_bond
     elseif config.lattice_type == CHAIN_1D
-        # 1D chain bonds
-        nn_bonds = [Bond(1, 1, [1, 0, 0])]
-        nnn_bonds = [Bond(1, 1, [2, 0, 0])]  # Next-nearest neighbor
-        return nn_bonds, nnn_bonds
+        nn_bond = Bond(1, 1, [1, 0, 0])
+        nnn_bond = Bond(1, 1, [2, 0, 0])
+        return nn_bond, nnn_bond
     elseif config.lattice_type == HONEYCOMB
-        # Honeycomb lattice bonds
-        nn_bonds = [Bond(1, 2, [0, 0, 0]),   # A → B (intra-cell)
-        Bond(1, 2, [1, 0, 0]),   # A → B (adjacent cell in x-direction)
-        Bond(1, 2, [0, 1, 0])]   # A → B (adjacent cell in y-direction)
-
-        nnn_bonds = []
-    
-        return nn_bonds, nnn_bonds
+        # Honeycomb nearest neighbor bonds (A-B sublattice connections)
+        nn_bond = Bond(1, 2, [0, 0, 0])    # A to B in same cell
+                
+        # Next-nearest neighbor (A-A and B-B connections)
+        nnn_bond = Bond(1, 1, [1, 0, 0])
+        return nn_bond, nnn_bond
     else
         error("Unsupported lattice type: $(config.lattice_type)")
     end
@@ -134,27 +118,23 @@ end
 
 """
 Sets up the Sunny system with exchange interactions based on lattice type.
-
-Don't like this: shouldnt need to for loop over the bonds
 """
 function setup_sunny_system(crystal, config::LatticeConfig)
-    pbc = (true,!config.periodic_bc,true)
-    sys = System(crystal, [1 => Moment(; s=config.s, g=2)], :dipole)
+    pbc = (true, !config.periodic_bc, true)
+    sys = System(crystal, [1 => Moment(; s=config.s, g=2)], :dipole) #if you force space group you have to add other moment 
 
-
-
-    
     # Get the appropriate bonds for this lattice type
-    nn_bonds, nnn_bonds = get_lattice_bonds(config)
+    nn_bond, nnn_bond = get_lattice_bonds(config)
+
     
     # Set nearest neighbor exchanges
-    set_exchange!(sys, config.J1, nn_bonds[1])
+    set_exchange!(sys, config.J1, nn_bond)
+    set_exchange!(sys, config.J2, nnn_bond)
 
-    
-    # Set next-nearest neighbor exchanges
-    set_exchange!(sys, config.J2, nnn_bonds[1])
+    # Show crystal structure
+    fig = view_crystal(sys; ndims=2, refbonds=20)
+    display(fig)
 
-    
     # Repeat periodically
     if config.lattice_type == CHAIN_1D
         sys = repeat_periodically(sys, (config.Lx, 1, 1))
@@ -163,42 +143,30 @@ function setup_sunny_system(crystal, config::LatticeConfig)
     end
 
     sys_inhom = to_inhomogeneous(sys)
-    #true means remove periodicity in that direction
-    remove_periodicity!(sys_inhom,pbc)
+    remove_periodicity!(sys_inhom, pbc)
 
     return sys_inhom
 end
+
 """
-Maps CartesianIndex to 1D label with optional permutation for different ordering schemes.
-This creates the standard labelling and will eventually permute according to some rule.
+Maps CartesianIndex to 1D label for ITensor indexing.
 """
-function cartind_to_label(cartind::CartesianIndex, dims; perm = nothing)
-    # perm will be some rule to move from conventional labelling i.e.
-    # 1 to Lx*Ly where we go 1→Lx first i.e. (2,1) → 2 to the scheme
-    # of choice e.g. snake
-    x, y = cartind[1], cartind[2]  # Now x=column, y=row
-    Lx, Ly = dims[1], dims[2]
-    n = (x-1)*Ly + y  # Match square_lattice's formula
+function cartind_to_label(cartind::CartesianIndex, dims, N_basis; perm=nothing)
+    i, j = cartind[1], cartind[2]
+    Lx, Ly = dims[1], dims[2] 
     
-    # Apply permutation if needed
+    k = cartind[4] # kth atom in basis
+    n = (i-1)*Ly*N_basis + (j-1)*N_basis + k
+
     perm === nothing ? n : perm(n)
-    
-    # Apply permutation if specified
-    if perm !== nothing
-        # Apply custom permutation logic here
-        # For now, return standard indexing
-        return n
-    else
-        return n
-    end
 end
 
-
 function get_unique_bonds(sys::System, config::LatticeConfig)
-    pbc = (true,!config.periodic_bc,true)
+    pbc = (true, !config.periodic_bc, true)
     Sunny.is_homogeneous(sys) && error("Use `to_inhomogeneous` first.")
     ints = Sunny.interactions_inhomog(sys)
     sites = Sunny.eachsite(sys)
+    N_basis = length(sys.crystal.positions)
     bond_pairs = []
     
     for (j, int) in enumerate(ints)
@@ -208,30 +176,24 @@ function get_unique_bonds(sys::System, config::LatticeConfig)
             
             siteᵢ = sites[j]
             siteⱼ = Sunny.bonded_site(siteᵢ, bond, sys.dims)
+        
+            # Get linear labels
+            labelᵢ = cartind_to_label(siteᵢ, sys.dims, N_basis)
+            labelⱼ = cartind_to_label(siteⱼ, sys.dims, N_basis)
             
-            push!(bond_pairs, (
-                cartind_to_label(siteᵢ, sys.dims),
-                cartind_to_label(siteⱼ, sys.dims),
-                pc.bilin
-            ))
+            # Create bond pair with coupling constant
+            push!(bond_pairs, (labelᵢ, labelⱼ, pc.bilin))
         end
     end
-    print(length(unique(bond_pairs)), " unique bonds found.\n")
-    # Remove duplicates by converting to a set
-    print(bond_pairs)
-    return unique(bond_pairs)
     
+    println("$(length(bond_pairs)) unique bonds found.")
+    return unique(bond_pairs), N_basis
 end
 
 """
 Classify bonds by their coupling strength and organize them.
-Returns organized bond information with coupling constants.
-
-This function is not used in Itensor calculation but is useful for analysis.
-
 """
 function organize_bonds_for_itensor(bond_pairs)
-    # Group bonds by coupling strength
     coupling_groups = Dict{Float64, Vector{Tuple{Int,Int}}}()
     
     for (i, j, coupling) in bond_pairs
@@ -241,7 +203,6 @@ function organize_bonds_for_itensor(bond_pairs)
         push!(coupling_groups[coupling], (i, j))
     end
     
-    # Sort coupling strengths to identify primary interactions
     sorted_couplings = sort(collect(keys(coupling_groups)), by=abs, rev=true)
     
     println("Found $(length(sorted_couplings)) different coupling strengths:")
@@ -252,25 +213,21 @@ function organize_bonds_for_itensor(bond_pairs)
     return coupling_groups, sorted_couplings
 end
 
-
 """
 Builds the ITensor Hamiltonian from processed bond pairs.
-Automatically handles multiple coupling strengths.
 """
-function build_hamiltonian_from_bonds(bond_pairs, config::LatticeConfig)
+function build_hamiltonian_from_bonds(bond_pairs, config::LatticeConfig, N_basis)
     if config.lattice_type == CHAIN_1D
         N = config.Lx
     else
-        N = config.Lx * config.Ly
+        N = config.Lx * config.Ly * N_basis
     end
     
     sites = siteinds("S=1/2", N; conserve_qns=false)
     
     os = OpSum()
     
-    # Add all bond terms (works for s dot s terms)
     for (i, j, coupling) in bond_pairs
-        # Heisenberg interaction terms
         os += coupling * 1.0, "Sz", i, "Sz", j
         os += coupling * 0.5, "S+", i, "S-", j
         os += coupling * 0.5, "S-", i, "S+", j
@@ -281,22 +238,18 @@ function build_hamiltonian_from_bonds(bond_pairs, config::LatticeConfig)
 end
 
 """
-Creates initial state for DMRG (can be customized per lattice type).
+Creates initial state for DMRG.
 """
-function create_initial_state(sites, config::LatticeConfig)
+function create_initial_state(sites, config::LatticeConfig, N_basis)
     if config.lattice_type == CHAIN_1D
-        N = config.Lx
+        N = config.Lx * N_basis
     else
-        N = config.Lx * config.Ly
+        N = config.Lx * config.Ly * N_basis
     end
     
-    # Different initial states for different lattices
     if config.lattice_type == TRIANGULAR
-        # For triangular lattice, might want a more complex initial state
         state = [isodd(n) ? "Up" : "Dn" for n=1:N]
     else
-        #might want some 'if random state'
-        # Standard Neel state for square and 1D
         state = [isodd(n) ? "Up" : "Dn" for n=1:N]
     end
     
@@ -317,17 +270,38 @@ end
 
 """
 Generates site positions for plotting based on lattice type.
+CORRECTED for honeycomb lattice.
 """
-function get_site_positions(config::LatticeConfig)
+function get_site_positions(config::LatticeConfig, N_basis)
     if config.lattice_type == CHAIN_1D
         return [(Float64(x), 0.0) for x in 1:config.Lx]
     elseif config.lattice_type == SQUARE
         return [(Float64(x), Float64(y)) for y in 1:config.Ly, x in 1:config.Lx][:]
-    else  # TRIANGULAR
-        return [(x + 0.5*(y%2), y*√3/2) for y in 1:config.Ly, x in 1:config.Lx][:]
+    elseif config.lattice_type == TRIANGULAR
+        return [(x - 0.5*(y>1)*(y-1), y*√3/2) for y in 1:config.Ly, x in 1:config.Lx][:]
+    elseif config.lattice_type == HONEYCOMB
+        positions = Tuple{Float64, Float64}[]
+        
+        # For honeycomb, we need to properly arrange the A and B sublattices
+        for j in 1:config.Ly
+            for i in 1:config.Lx
+                # Base position for unit cell (hexagonal lattice)
+                base_x = (i - 1) * config.a + (j % 2 == 0 ? config.a / 2 : 0)
+                base_y = (j - 1) * config.a * sqrt(3) / 2
+                
+                # A sublattice atom (first atom in unit cell)
+                push!(positions, (base_x, base_y))
+                
+                # B sublattice atom (second atom in unit cell)
+                push!(positions, (base_x + config.a / 2, base_y + config.a * sqrt(3) / 6))
+            end
+        end
+        
+        return positions
+    else
+        error("Unsupported lattice type: $(config.lattice_type)")
     end
 end
-
 
 # Analysis function to examine bond structure
 function analyze_bond_structure(bonds, couplings, config)
@@ -336,7 +310,7 @@ function analyze_bond_structure(bonds, couplings, config)
     
     for (coupling, bond_list) in couplings
         println("  Coupling J = $coupling: $(length(bond_list)) bonds")
-        if length(bond_list) ≤ 10  # Show first few bonds for small lists
+        if length(bond_list) ≤ 10
             for (i, j) in bond_list[1:min(5, length(bond_list))]
                 println("    ($i, $j)")
             end
@@ -347,80 +321,163 @@ function analyze_bond_structure(bonds, couplings, config)
     end
 end
 
-function plot_lattice(config::LatticeConfig, nn_bonds, nnn_bonds)
-    fig = Figure(resolution=(800, 600))
+"""
+CORRECTED plotting function for honeycomb lattice bonds.
+"""
+function plot_lattice(results::DMRGResults; show_crystal=false, coupling_threshold=1e-10)
+    plot_lattice(results.config, results.N_basis, results.bond_pairs, results.coupling_groups; 
+                show_crystal=show_crystal, coupling_threshold=coupling_threshold)
+end
+
+function plot_lattice(config::LatticeConfig, N_basis::Int, bond_pairs=nothing, coupling_groups=nothing; 
+                     show_crystal=false, coupling_threshold=1e-10)
     
-    if config.lattice_type == CHAIN_1D
-        # Simple 1D plot
-        ax = Axis(fig[1, 1], title="1D Chain", aspect=DataAspect())
-        sites = get_site_positions(config)
-        x_coords = [p[1] for p in sites]
-        y_coords = [p[2] for p in sites]
+    fig = Figure(resolution=(1200, 800))
+    
+    # Show crystal structure if requested
+    if show_crystal && config.lattice_type != CHAIN_1D
+        crystal = create_crystal(config)
+        crystal_fig = view_crystal(crystal; ndims=2)
+        display(crystal_fig)
+    end
+    
+    # Get site positions
+    sites = get_site_positions(config, N_basis)
+    x_coords = [p[1] for p in sites]
+    y_coords = [p[2] for p in sites]
+    
+    # Determine coloring based on basis
+    colors = if N_basis == 1
+        fill(:black, length(sites))
+    else
+        # For honeycomb: alternate colors for A and B sublattices
+        [mod1(i, N_basis) == 1 ? :blue : :red for i in 1:length(sites)]
+    end
+    
+    markersizes = fill(15, length(sites))
+
+    # If we have bond information, create plots
+    if bond_pairs !== nothing && coupling_groups !== nothing
+        sorted_couplings = sort(collect(keys(coupling_groups)), by=abs, rev=true)
+        significant_couplings = filter(J -> abs(J) > coupling_threshold, sorted_couplings)
         
-        scatter!(ax, x_coords, y_coords, color=:black, markersize=15)
+        n_plots = length(significant_couplings) + 1
+        n_cols = min(3, n_plots)
+        n_rows = ceil(Int, n_plots / n_cols)
         
-        # Draw bonds
-        for i in 1:length(sites)-1
-            lines!(ax, [sites[i][1], sites[i+1][1]], [sites[i][2], sites[i+1][2]], 
-                  color=:blue, linewidth=3)
+        # Create individual plots for each coupling strength
+        axes = []
+        for (idx, coupling) in enumerate(significant_couplings)
+            row = ceil(Int, idx / n_cols)
+            col = mod1(idx, n_cols)
+            
+            ax = Axis(fig[row, col], 
+                     title="J = $(round(coupling, digits=4))", 
+                     aspect=DataAspect())
+            push!(axes, ax)
+            
+            # Plot sites
+            scatter!(ax, x_coords, y_coords, color=colors, markersize=markersizes)
+            
+            # Plot bonds for this coupling strength
+            plot_bonds_from_pairs!(ax, bond_pairs, sites, coupling, :blue)
+        end
+        
+        # Create combined plot
+        combined_row = n_rows
+        combined_col = n_cols
+        if length(significant_couplings) % n_cols != 0
+            combined_col = (length(significant_couplings) % n_cols) + 1
+        else
+            combined_row += 1
+            combined_col = 1
+        end
+        
+        ax_combined = Axis(fig[combined_row, combined_col], 
+                          title="All Interactions", 
+                          aspect=DataAspect())
+        push!(axes, ax_combined)
+        
+        # Plot sites on combined plot
+        scatter!(ax_combined, x_coords, y_coords, color=colors, markersize=markersizes)
+        
+        # Plot all bonds with different colors/styles
+        colors_bonds = [:blue, :red, :green, :purple, :orange, :brown]
+        styles = [:solid, :dash, :dot, :dashdot]
+        
+        for (idx, coupling) in enumerate(significant_couplings)
+            bond_color = colors_bonds[mod1(idx, length(colors_bonds))]
+            bond_style = styles[mod1(idx, length(styles))]
+            plot_bonds_from_pairs!(ax_combined, bond_pairs, sites, coupling, bond_color, bond_style)
+        end
+        
+        # Add legend to combined plot
+        legend_elements = []
+        for (idx, coupling) in enumerate(significant_couplings)
+            bond_color = colors_bonds[mod1(idx, length(colors_bonds))]
+            bond_style = styles[mod1(idx, length(styles))]
+            push!(legend_elements, LineElement(color=bond_color, linestyle=bond_style))
+        end
+        legend_labels = ["J = $(round(J, digits=4))" for J in significant_couplings]
+        axislegend(ax_combined, legend_elements, legend_labels, position=:rt)
+        
+        # Adjust limits for all plots
+        for ax in axes
+            xlims!(ax, minimum(x_coords)-0.5, maximum(x_coords)+0.5)
+            ylims!(ax, minimum(y_coords)-0.5, maximum(y_coords)+0.5)
         end
         
     else
-        # 2D lattice plots
-        ax1 = Axis(fig[1, 1], title="Nearest Neighbors (NN)", aspect=DataAspect())
-        ax2 = Axis(fig[1, 2], title="Next-Nearest Neighbors (NNN)", aspect=DataAspect())
-        ax3 = Axis(fig[2, 1:2], title="Full $(config.lattice_type) Lattice", aspect=DataAspect())
-
-        sites = get_site_positions(config)
-        x_coords = [p[1] for p in sites]
-        y_coords = [p[2] for p in sites]
-
-        # Plot sites
-        for ax in [ax1, ax2, ax3]
-            scatter!(ax, x_coords, y_coords, color=:black, markersize=10)
-        end
-
-        # Helper function to plot bonds
-        function plot_bonds!(ax, bonds, color, style=:solid)
-            for bond in bonds
-                dx, dy, _ = bond.n
-                for y in 1:config.Ly, x in 1:config.Lx
-                    x2 = config.periodic_bc ? mod1(x + dx, config.Lx) : x + dx
-                    y2 = config.periodic_bc ? mod1(y + dy, config.Ly) : y + dy
-                    
-                    if (!config.periodic_bc && (x2 < 1 || x2 > config.Lx || y2 < 1 || y2 > config.Ly))
-                        continue
-                    end
-                    
-                    i = LinearIndices((config.Lx, config.Ly))[x, y]
-                    j = LinearIndices((config.Lx, config.Ly))[mod1(x2, config.Lx), mod1(y2, config.Ly)]
-                    
-                    if i < j
-                        p1 = sites[i]
-                        p2 = sites[j]
-                        lines!(ax, [p1[1], p2[1]], [p1[2], p2[2]], 
-                              color=color, linestyle=style, linewidth=2)
-                    end
-                end
-            end
-        end
-
-        # Plot bonds
-        plot_bonds!(ax1, nn_bonds, :blue)
-        plot_bonds!(ax3, nn_bonds, :blue)
-        plot_bonds!(ax2, nnn_bonds, :red, :dash)
-        plot_bonds!(ax3, nnn_bonds, :red, :dash)
+        # Simple single plot if no bond information available
+        ax = Axis(fig[1, 1], title="$(config.lattice_type) Lattice", aspect=DataAspect())
+        scatter!(ax, x_coords, y_coords, color=colors, markersize=markersizes)
+        xlims!(ax, minimum(x_coords)-0.5, maximum(x_coords)+0.5)
+        ylims!(ax, minimum(y_coords)-0.5, maximum(y_coords)+0.5)
     end
-
+    
     display(fig)
     return fig
 end
 
 """
-Main function that orchestrates the entire calculation using the improved bond extraction.
+CORRECTED helper function to plot bonds from bond_pairs.
+Removed the problematic print statement and improved error handling.
+"""
+function plot_bonds_from_pairs!(ax, bond_pairs, sites, target_coupling, color, style=:solid)
+    bonds_plotted = 0
+    
+    for (i, j, coupling) in bond_pairs
+        # Only plot bonds with the target coupling strength
+        if abs(coupling - target_coupling) < 1e-12
+            # Ensure indices are valid
+            if i > 0 && i <= length(sites) && j > 0 && j <= length(sites)
+                p1 = sites[i]
+                p2 = sites[j]
+                
+                lines!(ax, [p1[1], p2[1]], [p1[2], p2[2]], 
+                      color=color, linestyle=style, linewidth=2)
+                bonds_plotted += 1
+
+                # Add annotations for i and j at the midpoint of the bond
+                midpoint = ((p1[1] + p2[1])/2, (p1[2] + p2[2] + 0.2)/2)
+                text!(ax, "($i,$j)", position=midpoint, 
+                      fontsize=8, color=:black, align=(:center, :center))
+            else
+                println("Warning: Invalid bond indices ($i, $j) for sites of length $(length(sites))")
+            end
+        end
+    end
+    
+    println("Plotted $bonds_plotted bonds for coupling $target_coupling")
+    return bonds_plotted
+end
+
+"""
+Main function that orchestrates the entire calculation.
 """
 function main_calculation(config::LatticeConfig = default_triangular_config(), 
-                         dmrg_config::DMRGConfig = default_dmrg_config())
+                         dmrg_config::DMRGConfig = default_dmrg_config();
+                         show_plots=true, show_crystal=false)
     
     println("START OF CALCULATION ==============================")
     println("Periodic boundary conditions in y: ", config.periodic_bc)
@@ -429,72 +486,57 @@ function main_calculation(config::LatticeConfig = default_triangular_config(),
     
     # 1. Set up the crystal structure
     crystal = create_crystal(config)
-    if config.lattice_type != CHAIN_1D
-        view_crystal(crystal)
-    end
     
     # 2. Set up the Sunny system
     sys = setup_sunny_system(crystal, config)
-
     
-    # 4. Extract bonds directly from Sunny system
-    bond_pairs = get_unique_bonds(sys, config)
+    # 3. Extract bonds directly from Sunny system
+    bond_pairs, N_basis = get_unique_bonds(sys, config)
     
-    # 5. Organize bonds by coupling strength
+    # 4. Organize bonds by coupling strength
     coupling_groups, sorted_couplings = organize_bonds_for_itensor(bond_pairs)
 
-    # 6. Visualize the lattice and bonds
-    nn_bonds, nnn_bonds = get_lattice_bonds(config)
-    plot_lattice(config, nn_bonds, nnn_bonds)
+    # 5. Build the Hamiltonian directly from bond pairs
+    H, sites = build_hamiltonian_from_bonds(bond_pairs, config, N_basis)
 
-    # 7. Build the Hamiltonian directly from bond pairs
-    H, sites = build_hamiltonian_from_bonds(bond_pairs, config)
-
-    # 8. Create initial state (MAKE THIS BIT MORE GENERAL)
+    # 6. Create initial state
     if config.lattice_type == CHAIN_1D
         linkdims = 10
-        psi0 = random_mps(sites;linkdims)
+        psi0 = random_mps(sites; linkdims)
     else
-        psi0 = create_initial_state(sites, config)
+        psi0 = create_initial_state(sites, config, N_basis)
     end
    
-    # 9. Calculate initial energy
+    # 7. Calculate initial energy
     initial_energy = inner(psi0, Apply(H, psi0))
     println("Initial energy = ", initial_energy)
         
-    # 10. Run DMRG
+    # 8. Run DMRG
     energy, psi = run_dmrg(H, psi0, dmrg_config)
     
-    # 11. Report results
+    # 9. Report results
     println("\nGround State Energy = ", energy)
     println("Energy per site = ", energy / length(sites))
     println("Using overlap = ", inner(psi, Apply(H, psi)))
     println("Total QN of Ground State = ", totalqn(psi))
     
-    # 12. Return additional bond information for analysis
-    return energy, psi, H, sites, bond_pairs, coupling_groups
+    # 10. Create results structure
+    results = DMRGResults(energy, psi, H, sites, bond_pairs, coupling_groups, 
+                         config, N_basis, crystal, sys)
+    
+    # 11. Show plots if requested
+    if show_plots
+        plot_lattice(results; show_crystal=show_crystal)
+    end
+    
+    return results
 end
 
+# Example usage:
+println("=== SUNNY to ITensor ===")
+honey_results = main_calculation(default_honeycomb_config(); show_plots=true, show_crystal=false)
+#tri_results = main_calculation(default_triangular_config(); show_plots=true, show_crystal=false)
 
-
-"""
-# Square lattice
-println("\n=== SQUARE LATTICE ===")
-sq_config = default_square_config()
-energy_sq, psi_sq, H_sq, sites_sq, bonds_sq, couplings_sq = main_calculation(sq_config)
-analyze_bond_structure(bonds_sq, couplings_sq, sq_config)
-
-
-# Triangular lattice dmrg calc
-println("=== TRIANGULAR LATTICE ===")
-tri_config = default_triangular_config()
-energy_tri, psi_tri, H_tri, sites_tri, bonds_tri, couplings_tri = main_calculation(tri_config)
-# Analyze the bond structures
-analyze_bond_structure(bonds_tri, couplings_tri, tri_config)
-"""
-
-#Honeycomb lattice
-println("=== HONEYCOMB LATTICE ===")
-honeycomb_config = default_honeycomb_config()
-energy_honeycomb, psi_honeycomb, H_honeycomb, sites_honeycomb, bonds_honeycomb, couplings_honeycomb = main_calculation(honeycomb_config)
-analyze_bond_structure(bonds_honeycomb, couplings_honeycomb, honeycomb_config)
+# Analyze the bond structure:
+analyze_bond_structure(honey_results.bond_pairs, honey_results.coupling_groups, honey_results.config)
+#analyze_bond_structure(tri_results.bond_pairs, tri_results.coupling_groups, tri_results.config)
