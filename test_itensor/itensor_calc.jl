@@ -43,8 +43,8 @@ end
 
 
 let
-    Nx = 8
-    Ny = 8
+    Nx = 5
+    Ny = 5
     N = Nx * Ny
     yperiodic = true
 
@@ -54,7 +54,7 @@ let
     # Use the AutoMPO feature to create the 
     # next-neighbor Heisenberg model.
     ops = OpSum()
-    lattice = triangular_lattice(Nx, Ny; yperiodic=yperiodic)
+    lattice = square_lattice(Nx, Ny; yperiodic=yperiodic)
     num_bonds = length(lattice)
     print(lattice)
     println("Number of bonds in the $Nx×$Ny lattice with yperiodic=$yperiodic: $num_bonds")
