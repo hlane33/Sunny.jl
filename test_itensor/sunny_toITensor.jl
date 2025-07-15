@@ -57,7 +57,7 @@ function default_chain_config()
 end
 
 function default_honeycomb_config()
-    return LatticeConfig(HONEYCOMB, 3, 3, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
+    return LatticeConfig(HONEYCOMB, 4, 4, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
 end
 
 function default_dmrg_config()
@@ -78,11 +78,15 @@ function create_crystal(config::LatticeConfig)
         latvecs = lattice_vectors(config.a, 10*config.a, 10*config.a, 90, 90, 90)
         return Crystal(latvecs, [[0, 0, 0]])
     elseif config.lattice_type == HONEYCOMB
-        latvecs = lattice_vectors(config.a, config.a, 1.0, 90, 90, 120)
-        # Two atoms per unit cell for honeycomb
-        crystal = Crystal(latvecs, [[0, 0, 0], [0.5, 1/(2*sqrt(3)),0]]) #could add spacegroup = 191-- does weird things
-        print(crystal)
-        return crystal
+        # Lattice vectors (a = b = 1.0 Å gives unit spacing, but you can scale this)
+        a = 2.46  # Typical graphene lattice constant in Ångströms
+        latvecs = lattice_vectors(a, a, 10.0, 90, 90, 120)  # c=10.0 to separate layers
+
+        # Space group 191 (P6/mmm) generates the honeycomb positions automatically
+        positions = [[1/3, 2/3, 0]]  # Fractional coordinates
+        cryst = Crystal(latvecs, positions, 191) #Need only specify one position if using spacegroup
+        print(cryst)
+        return cryst
     else
         error("Unsupported lattice type: $(config.lattice_type)")
     end
@@ -107,7 +111,6 @@ function get_lattice_bonds(config::LatticeConfig)
     elseif config.lattice_type == HONEYCOMB
         # Honeycomb nearest neighbor bonds (A-B sublattice connections)
         nn_bond = Bond(1, 2, [0, 0, 0])    # A to B in same cell
-                
         # Next-nearest neighbor (A-A and B-B connections)
         nnn_bond = Bond(1, 1, [1, 0, 0])
         return nn_bond, nnn_bond
@@ -121,7 +124,7 @@ Sets up the Sunny system with exchange interactions based on lattice type.
 """
 function setup_sunny_system(crystal, config::LatticeConfig)
     pbc = (true, !config.periodic_bc, true)
-    sys = System(crystal, [1 => Moment(; s=config.s, g=2)], :dipole) #if you force space group you have to add other moment 
+    sys = System(crystal, [1 => Moment(; s=config.s, g=2)], :dipole) #if you force space group you have to add other moment
 
     # Get the appropriate bonds for this lattice type
     nn_bond, nnn_bond = get_lattice_bonds(config)
@@ -165,6 +168,7 @@ function get_unique_bonds(sys::System, config::LatticeConfig)
     pbc = (true, !config.periodic_bc, true)
     Sunny.is_homogeneous(sys) && error("Use `to_inhomogeneous` first.")
     ints = Sunny.interactions_inhomog(sys)
+
     sites = Sunny.eachsite(sys)
     N_basis = length(sys.crystal.positions)
     bond_pairs = []
@@ -173,7 +177,7 @@ function get_unique_bonds(sys::System, config::LatticeConfig)
         for pc in int.pair
             (; bond, isculled) = pc
             isculled && continue
-            
+            print(pc.bond)
             siteᵢ = sites[j]
             siteⱼ = Sunny.bonded_site(siteᵢ, bond, sys.dims)
         
@@ -185,7 +189,7 @@ function get_unique_bonds(sys::System, config::LatticeConfig)
             push!(bond_pairs, (labelᵢ, labelⱼ, pc.bilin))
         end
     end
-    
+    print(bond_pairs)
     println("$(length(bond_pairs)) unique bonds found.")
     return unique(bond_pairs), N_basis
 end
@@ -280,22 +284,33 @@ function get_site_positions(config::LatticeConfig, N_basis)
     elseif config.lattice_type == TRIANGULAR
         return [(x - 0.5*(y>1)*(y-1), y*√3/2) for y in 1:config.Ly, x in 1:config.Lx][:]
     elseif config.lattice_type == HONEYCOMB
-        positions = Tuple{Float64, Float64}[]
-        
-        # For honeycomb, we need to properly arrange the A and B sublattices
-        for j in 1:config.Ly
-            for i in 1:config.Lx
-                # Base position for unit cell (hexagonal lattice)
-                base_x = (i - 1) * config.a + (j % 2 == 0 ? config.a / 2 : 0)
-                base_y = (j - 1) * config.a * sqrt(3) / 2
+       positions = Tuple{Float64, Float64}[]
+    
+        for y in 1:config.Ly
+            for x in 1:config.Lx
+                # Original parallelogram coordinates
+                px = x - 0.5 * (y > 1) * (y - 1)
+                base_x = px * config.a
+                base_y = y * config.a * √3 / 2
                 
-                # A sublattice atom (first atom in unit cell)
-                push!(positions, (base_x, base_y))
+                # Rotate 90 degrees clockwise: (x, y) → (y, -x)
+                rotated_x = base_y
+                rotated_y = -base_x
                 
-                # B sublattice atom (second atom in unit cell)
-                push!(positions, (base_x + config.a / 2, base_y + config.a * sqrt(3) / 6))
+                # A sublattice atom
+                push!(positions, (rotated_x, rotated_y))
+                
+                # B sublattice atom (apply same rotation to offset)
+                offset_x = config.a / 2
+                offset_y = -config.a * √3 / 6
+                rotated_offset_x = offset_y  # Note the sign change from rotation
+                rotated_offset_y = -offset_x
+                
+                push!(positions, (rotated_x + rotated_offset_x, 
+                                rotated_y + rotated_offset_y))
             end
         end
+    
         
         return positions
     else
