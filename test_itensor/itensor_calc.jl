@@ -201,8 +201,8 @@ end
 
 
 let
-    Nx = 4
-    Ny = 4
+    Nx = 6
+    Ny = 6
     N_basis = 2  # Number of basis states per site (S=1/2)
     N = Nx * Ny*N_basis
     yperiodic = true
@@ -254,6 +254,7 @@ let
 
     # Print the final energy reported by DMRG
     println("\nGround State Energy = ", energy)
+    println("Energy per site = ", energy / N)
     println("\nUsing overlap = ", inner(psi, Apply(H, psi)))
 
     println("\nTotal QN of Ground State = ", totalqn(psi))
