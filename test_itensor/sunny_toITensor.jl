@@ -1,4 +1,4 @@
-using Sunny, ITensors, ITensorMPS, GLMakie
+using Sunny, ITensors, ITensorMPS, GLMakie, LinearAlgebra
 
 # Enum for lattice types
 @enum LatticeType begin
@@ -45,7 +45,7 @@ end
 
 # Default configurations for different lattice types
 function default_triangular_config()
-    return LatticeConfig(TRIANGULAR, 4, 4, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
+    return LatticeConfig(TRIANGULAR, 8, 8, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
 end
 
 function default_square_config()
@@ -57,11 +57,11 @@ function default_chain_config()
 end
 
 function default_honeycomb_config()
-    return LatticeConfig(HONEYCOMB, 4, 4, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
+    return LatticeConfig(HONEYCOMB, 6, 6, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
 end
 
 function default_dmrg_config()
-    return DMRGConfig(5, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
+    return DMRGConfig(10, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
 end
 
 """
@@ -134,6 +134,13 @@ function setup_sunny_system(crystal, config::LatticeConfig)
     set_exchange!(sys, config.J1, nn_bond)
     set_exchange!(sys, config.J2, nnn_bond)
 
+    # Set XXZ exchange
+    J = 1.0
+    Δ = 1.0  # Tune this for anisotropy (Δ < 1: easy-plane, Δ > 1: easy-axis)
+    J_matrix = J * [1.0 0 0; 0 1.0 0; 0 0 Δ]
+
+    set_exchange!(sys, J_matrix, nn_bond) #will currently override nn bond
+
     # Show crystal structure
     fig = view_crystal(sys; ndims=2, refbonds=20)
     display(fig)
@@ -177,19 +184,25 @@ function get_unique_bonds(sys::System, config::LatticeConfig)
         for pc in int.pair
             (; bond, isculled) = pc
             isculled && continue
-            print(pc.bond)
             siteᵢ = sites[j]
             siteⱼ = Sunny.bonded_site(siteᵢ, bond, sys.dims)
         
             # Get linear labels
             labelᵢ = cartind_to_label(siteᵢ, sys.dims, N_basis)
             labelⱼ = cartind_to_label(siteⱼ, sys.dims, N_basis)
+
+            # Convert scalar couplings to diagonal matrices
+            coupling_matrix = if pc.bilin isa AbstractMatrix
+                pc.bilin  # Keep as-is if already a matrix
+            else
+                # Create diagonal matrix from uniform coupling
+                Matrix(pc.bilin * I, 3, 3)  # 3x3 identity scaled by coupling -- prevents errors when forming hamiltonian
+            end
             
             # Create bond pair with coupling constant
-            push!(bond_pairs, (labelᵢ, labelⱼ, pc.bilin))
+            push!(bond_pairs, (labelᵢ, labelⱼ, coupling_matrix))
         end
     end
-    print(bond_pairs)
     println("$(length(bond_pairs)) unique bonds found.")
     return unique(bond_pairs), N_basis
 end
@@ -198,16 +211,21 @@ end
 Classify bonds by their coupling strength and organize them.
 """
 function organize_bonds_for_itensor(bond_pairs)
-    coupling_groups = Dict{Float64, Vector{Tuple{Int,Int}}}()
-    
+    # New version that handles both Float64 and Matrix couplings
+    coupling_groups = Dict{Any, Vector{Tuple{Int,Int}}}()  # Can store both matrices and norms
+
     for (i, j, coupling) in bond_pairs
-        if !haskey(coupling_groups, coupling)
-            coupling_groups[coupling] = Vector{Tuple{Int,Int}}()
+        # Use Frobenius norm as the grouping key
+        coupling_key = coupling[1,1]
+        
+        if !haskey(coupling_groups, coupling_key)
+            coupling_groups[coupling_key] = Vector{Tuple{Int,Int}}()
         end
-        push!(coupling_groups[coupling], (i, j))
+        push!(coupling_groups[coupling_key], (i, j))
     end
-    
-    sorted_couplings = sort(collect(keys(coupling_groups)), by=abs, rev=true)
+
+    # Sort by absolute value (for floats) or matrix norm (for matrices)
+    sorted_couplings = sort(collect(keys(coupling_groups)), by=x -> x isa AbstractMatrix ? norm(x) : abs(x), rev=true)
     
     println("Found $(length(sorted_couplings)) different coupling strengths:")
     for (idx, coupling) in enumerate(sorted_couplings)
@@ -220,21 +238,44 @@ end
 """
 Builds the ITensor Hamiltonian from processed bond pairs.
 """
-function build_hamiltonian_from_bonds(bond_pairs, config::LatticeConfig, N_basis)
+function build_hamiltonian_from_bonds(bond_pairs, config::LatticeConfig, N_basis; conserve_qns=true)
     if config.lattice_type == CHAIN_1D
         N = config.Lx
     else
         N = config.Lx * config.Ly * N_basis
     end
     
-    sites = siteinds("S=1/2", N; conserve_qns=false)
+    sites = siteinds("S=1/2", N; conserve_qns=conserve_qns)
     
     os = OpSum()
     
     for (i, j, coupling) in bond_pairs
-        os += coupling * 1.0, "Sz", i, "Sz", j
-        os += coupling * 0.5, "S+", i, "S-", j
-        os += coupling * 0.5, "S-", i, "S+", j
+        #Assumes no off diagonal coupling
+        J_xx = coupling[1, 1]  # Top-left element (SxSx coupling)
+        J_yy = coupling[2, 2]  # Middle element (SySy coupling)
+        J_zz = coupling[3, 3]  # Bottom-right element (SzSz coupling)
+        J_xy = coupling[1, 2]  # SxSy coupling
+        J_yx = coupling[2, 1]  # SySx coupling
+        J_xz = coupling[1, 3]  # SxSz coupling
+        J_zx = coupling[3, 1]  # SzSx coupling
+        J_yz = coupling[2, 3]  # SySz coupling
+        J_zy = coupling[3, 2]  # SzSy coupling
+
+
+        os += (J_xx + J_yy)/4, "S+", i, "S-", j
+        os += (J_xx + J_yy)/4, "S-", i, "S+", j
+        # SzSz term
+        os += J_zz, "Sz", i, "Sz", j
+        # Off-diagonal terms - offdiagonal terms will break QN conservation anyway so may as well keep them
+        # in terms of Sx and Sy
+        if !conserve_qns
+            os += J_xy, "S+", i, "S-", j  # J_xy SxSy
+            os += J_yx, "S-", i, "S+", j  # J_yx SySx 
+            os += J_xz, "S+", i, "Sz", j  # J_xz SxSz
+            os += J_zx, "Sz", i, "S+", j  # J_zx SzSx
+            os += J_yz, "S-", i, "Sz", j  # J_yz SySz
+            os += J_zy, "Sz", i, "S-", j  # J_zy SzSy
+        end
     end
     
     H = MPO(os, sites)
@@ -374,6 +415,7 @@ function plot_lattice(config::LatticeConfig, N_basis::Int, bond_pairs=nothing, c
     # If we have bond information, create plots
     if bond_pairs !== nothing && coupling_groups !== nothing
         sorted_couplings = sort(collect(keys(coupling_groups)), by=abs, rev=true)
+        print(sorted_couplings)
         significant_couplings = filter(J -> abs(J) > coupling_threshold, sorted_couplings)
         
         n_plots = length(significant_couplings) + 1
@@ -383,6 +425,7 @@ function plot_lattice(config::LatticeConfig, N_basis::Int, bond_pairs=nothing, c
         # Create individual plots for each coupling strength
         axes = []
         for (idx, coupling) in enumerate(significant_couplings)
+            print(coupling, "significant couplin")
             row = ceil(Int, idx / n_cols)
             col = mod1(idx, n_cols)
             
@@ -463,7 +506,9 @@ function plot_bonds_from_pairs!(ax, bond_pairs, sites, target_coupling, color, s
     
     for (i, j, coupling) in bond_pairs
         # Only plot bonds with the target coupling strength
-        if abs(coupling - target_coupling) < 1e-12
+        coupling_val = coupling[1, 1]  # Assuming uniform coupling for simplicity
+
+        if abs(coupling_val - target_coupling) < 1e-12
             # Ensure indices are valid
             if i > 0 && i <= length(sites) && j > 0 && j <= length(sites)
                 p1 = sites[i]
@@ -492,7 +537,7 @@ Main function that orchestrates the entire calculation.
 """
 function main_calculation(config::LatticeConfig = default_triangular_config(), 
                          dmrg_config::DMRGConfig = default_dmrg_config();
-                         show_plots=true, show_crystal=false)
+                         show_plots=false, show_crystal=false)
     
     println("START OF CALCULATION ==============================")
     println("Periodic boundary conditions in y: ", config.periodic_bc)
@@ -511,14 +556,14 @@ function main_calculation(config::LatticeConfig = default_triangular_config(),
     # 4. Organize bonds by coupling strength
     coupling_groups, sorted_couplings = organize_bonds_for_itensor(bond_pairs)
 
-    # 5. Build the Hamiltonian directly from bond pairs
-    H, sites = build_hamiltonian_from_bonds(bond_pairs, config, N_basis)
-
-    # 6. Create initial state
+    # 6. Create initial state and form hamiltonian
     if config.lattice_type == CHAIN_1D
         linkdims = 10
+        H, sites = build_hamiltonian_from_bonds(bond_pairs, config, N_basis;conserve_qns=false)
+        #can't conserve qns for random site
         psi0 = random_mps(sites; linkdims)
     else
+        H, sites = build_hamiltonian_from_bonds(bond_pairs, config, N_basis; conserve_qns=true)
         psi0 = create_initial_state(sites, config, N_basis)
     end
    
@@ -547,11 +592,14 @@ function main_calculation(config::LatticeConfig = default_triangular_config(),
     return results
 end
 
+"""
 # Example usage:
 println("=== SUNNY to ITensor ===")
-honey_results = main_calculation(default_honeycomb_config(); show_plots=true, show_crystal=false)
-#tri_results = main_calculation(default_triangular_config(); show_plots=true, show_crystal=false)
+honey_results = main_calculation(default_honeycomb_config();show_crystal=false)
+#tri_results = main_calculation(default_triangular_config(); show_crystal=false)
 
 # Analyze the bond structure:
 analyze_bond_structure(honey_results.bond_pairs, honey_results.coupling_groups, honey_results.config)
 #analyze_bond_structure(tri_results.bond_pairs, tri_results.coupling_groups, tri_results.config)
+
+"""
