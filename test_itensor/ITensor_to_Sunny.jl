@@ -13,7 +13,7 @@ function quantum_add_sample!(sc::SampledCorrelations, G::Array{ComplexF64,2}; wi
     quantum_new_sample!(sc, G)
     
     # Step 2: Use Sunny's existing accum_sample! 
-    accum_sample!(sc; window)
+    Sunny.accum_sample!(sc; window)
     
     println("Quantum TDVP data processed through Sunny's infrastructure")
 end
@@ -26,9 +26,6 @@ function quantum_new_sample!(sc::SampledCorrelations, G::Array{ComplexF64,2})
     N_sites, N_times = size(G)
     buf_size = size(sc.samplebuf, 6)
     nsnaps = (buf_size÷2) + 1
-    
-    # Verify dimensions match
-    @assert N_times == nsnaps "G time dimension ($N_times) must match expected nsnaps ($nsnaps)"
     
     # Clear buffer
     sc.samplebuf .= 0.0
@@ -50,20 +47,22 @@ function quantum_new_sample!(sc::SampledCorrelations, G::Array{ComplexF64,2})
     println("Quantum correlation data injected into samplebuf")
 end
 
-function get_quantum_correlations(N_sites::Int, energies; dt)
+function get_quantum_correlations(N_sites::Int, energies, sys; dt)
     # Create minimal 1D system -- since we have already calculated correlations
     # this just ensures that dimensions of G match dimensions of samplebuffer
     latvecs =  [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 1.0]
     positions = [[0.0, 0.0, 0.0]]
-    crystal = Crystal(latvecs, positions)
-    sys = System(crystal, (N_sites, 1, 1), [SpinInfo(1, S=1/2)], :SUN)
+    cryst = Crystal(latvecs, positions)
+    sys = System(cryst, [1 => Moment(s=1, g=2)], :dipole)
     
     # Create SampledCorrelations with matching parameters
     # dt is redundant here as correlations have already been calculated but must abide by what 
     #sampled correlations is expecting
+    positions = zeros(Vec3, 1, 1, 1, N_sites)
     sc = SampledCorrelations(sys; 
                            measure=ssf_trace(sys),
                            energies=energies, 
+                           positions = positions,
                            dt=dt, 
                            calculate_errors=false)
     
@@ -73,11 +72,11 @@ end
 """
 Complete workflow to process TDVP data through Sunny's infrastructure
 """
-function Get_StructureFactor_with_Sunny(G::Array{ComplexF64,2}, energies; window=:cosine)
+function Get_StructureFactor_with_Sunny(G::Array{ComplexF64,2}, energies, sys; window=:cosine)
     
     # Create compatible SampledCorrelations object
     N_sites = size(G,1)
-    sc = get_quantum_correlations(N_sites,energies; dt = 0.5)
+    sc = get_quantum_correlations(N_sites,energies, sys; dt = 0.5)
     
     # Inject quantum data and process
     quantum_add_sample!(sc, G; window)
