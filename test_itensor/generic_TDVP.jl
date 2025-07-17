@@ -60,7 +60,8 @@ end
 # Main Program #
 ################
 
-function Export_G()
+function Get_Structure_factor()
+    units = Units(:meV, :angstrom)
     # Lattice configuration
     N = 15
     # Time evolution parameters
@@ -79,7 +80,7 @@ function Export_G()
     )
 
     custom_config = LatticeConfig(CHAIN_1D, N, N, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
-    DMRG_results = main_calculation(custom_config, custom_dmrg_config)
+    DMRG_results, sys = main_calculation(custom_config, custom_dmrg_config)
     ψ = DMRG_results.psi
     H = DMRG_results.H
     sites = DMRG_results.sites
@@ -93,23 +94,26 @@ function Export_G()
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
 
     # Compute structure factor
-    energies = 0:0.05:5
-    allowed_qs = 0:(1/N):2π
-    out = Get_StructureFactor_with_Sunny(G, energies)
 
-    # Plotting
-    fig = Figure()
-    ax = Axis(fig[1, 1],
-              xlabel = "qₓ",
-              xticks = ([0, allowed_qs[end]], ["0", "2π"]),
-              ylabel = "Energy (meV)",
-              title = "S=1/2 AFM DMRG/TDVP")
-    GLMakie.heatmap!(ax, allowed_qs, energies, out,
-             colorrange = (0, 0.5 * maximum(out)))
-    ylims!(ax, 0, 5)
+    energies = 0:0.05:5
+    sc = Get_StructureFactor_with_Sunny(G, energies, sys)
+
+    # Generate linearly spaced q-points
+    qs = [[0, 0, 0], [1/2, 0, 0], [1/2, 1/2, 0], [0, 0, 0]]
+    cryst = sys.crystal
+    path = q_space_path(cryst, qs, 500)
+
+    # 2. Compute S(q, ω)
+    res = intensities(sc, path; energies, kT = nothing)
+    
+
+    # 3. Plot
+    fig = plot_intensities(res; units, title="Intensities")
+
+    
     return fig
 end
 
 # Execute the program
-fig = Export_G()
+fig = Get_Structure_factor()
 display(fig)
