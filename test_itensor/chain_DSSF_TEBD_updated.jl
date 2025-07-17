@@ -84,31 +84,23 @@ end
 ################
 
 function main()
-    # Parameters
-    N = 30
+    #Lattice size
+    N = 15
+    # Parameters for both DMRG and TEBD
+    #DMRG
     nsweeps = 15
     maxdim = [10, 20, 100, 100, 200]
+    #BOTH
     cutoff = 1E-10
+    #TDVP
     η = 0.1
-    tstep = 0.2
+    tstep = 0.5
     tmax = 10.0
 
     # Run DMRG
     E0, ψ, sites = DMRG_AFM(N, nsweeps, maxdim, cutoff)
     println("Ground state energy: $E0")
     println("Sz expectation: ", expect(ψ, "Sz"))
-
-    #RUN DMRG from Sunny
-    N=30
-    custom_dmrg_config = DMRGConfig(
-    15,                     # nsweeps
-    [10, 20, 100, 100, 200],# maxdim
-    [1E-10],                   # cutoff
-    (0.0,) # noise is empty
-    )
-
-    custom_chain_config = LatticeConfig(CHAIN_1D, N, 1, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
-    E0, ψ, H, sites, bond_pairs, coupling_groups = main_calculation(custom_chain_config, custom_dmrg_config)
 
 
     # Prepare time evolution
@@ -131,8 +123,8 @@ function main()
               xlabel = "qₓ",
               xticks = ([0, allowed_qs[end]], ["0", "2π"]),
               ylabel = "Energy (meV)",
-              title = "S=1/2 AFM DMRG/2nd order TEBD")
-    heatmap!(ax, allowed_qs, energies, out,
+              title = "S=1/2 AFM DMRG/2nd order TEBD without sunny for N = $N")
+    Makie.heatmap!(ax, allowed_qs, energies, out,
              colorrange = (0, 0.5 * maximum(out)))
     ylims!(ax, 0, 5)
     return fig

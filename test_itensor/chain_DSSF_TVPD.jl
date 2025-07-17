@@ -77,7 +77,7 @@ end
 
 function main()
     # Parameters
-    N = 30
+    N = 15
     η = 0.1
     tstep = 0.5
     tmax = 10.0
@@ -93,7 +93,12 @@ function main()
     )
 
     custom_chain_config = LatticeConfig(CHAIN_1D, N, 1, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
-    E0, ψ, H, sites, bond_pairs, coupling_groups = main_calculation(custom_chain_config, custom_dmrg_config)
+    lattice_type = custom_chain_config.lattice_type
+    lattice_size = custom_chain_config.Lx
+    DMRG_results = main_calculation(custom_chain_config, custom_dmrg_config)
+    ψ = DMRG_results.psi
+    H = DMRG_results.H
+    sites = DMRG_results.sites
 
     # Prepare time evolution
     ts = 0.0:tstep:tmax
@@ -102,6 +107,8 @@ function main()
 
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
+
+    print(G)
 
 
     # Compute structure factor
@@ -116,8 +123,8 @@ function main()
               xlabel = "qₓ",
               xticks = ([0, allowed_qs[end]], ["0", "2π"]),
               ylabel = "Energy (meV)",
-              title = "S=1/2 AFM DMRG/TDVP")
-    heatmap!(ax, allowed_qs, energies, out,
+              title = "S=1/2 AFM DMRG/TDVP for $lattice_type Lattice with N = $lattice_size")
+    Makie.heatmap!(ax, allowed_qs, energies, out,
              colorrange = (0, 0.5 * maximum(out)))
     ylims!(ax, 0, 5)
     return fig
