@@ -1,5 +1,6 @@
 using ITensors, ITensorMPS, GLMakie, Sunny
 include("sunny_toITensor.jl")
+include("ITensor_to_Sunny.jl")
 
 #################
 # Core Functions #
@@ -54,36 +55,20 @@ function compute_G(N, ψ, ϕ, H, sites, η, ts, tstep, cutoff, maxdim)
     return G
 end
 
-function compute_S(qs, ωs, G, positions, c, ts)
-    out = zeros(Float64, length(qs), length(ωs))
-    for (qi, q) ∈ enumerate(qs)
-        for (ωi, ω) ∈ enumerate(ωs)
-            sum_val = 0.0
-            for xi ∈ 1:length(positions), ti ∈ 1:length(ts)
-                val = cos(q * (positions[xi] - c)) * 
-                      (cos(ω * ts[ti]) * real(G[xi, ti]) - 
-                       sin(ω * ts[ti]) * imag(G[xi, ti]))
-                sum_val += val
-            end
-            out[qi, ωi] = sum_val
-        end
-    end
-    return out
-end
 
 ################
 # Main Program #
 ################
 
-function main()
+function Export_G()
     # Lattice configuration
-    N = 5
+    N = 15
     # Time evolution parameters
     η = 0.1
     tstep = 0.5
-    tmax = 10.0
+    tmax = 3.0
     cutoff = 1E-10
-    maxdim = 300  # For TDVP evolution
+    maxdim = 300  
 
     # RUN DMRG from Sunny
     custom_dmrg_config = DMRGConfig(
@@ -93,8 +78,8 @@ function main()
         (0.0,)                 # noise
     )
 
-    custom_square_config = LatticeConfig(SQUARE, N, N, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
-    DMRG_results = main_calculation(custom_square_config, custom_dmrg_config)
+    custom_config = LatticeConfig(CHAIN_1D, N, N, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
+    DMRG_results = main_calculation(custom_config, custom_dmrg_config)
     ψ = DMRG_results.psi
     H = DMRG_results.H
     sites = DMRG_results.sites
@@ -107,12 +92,10 @@ function main()
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
 
-
     # Compute structure factor
     energies = 0:0.05:5
     allowed_qs = 0:(1/N):2π
-    positions = 1:N
-    out = compute_S(allowed_qs, energies, G, positions, c, ts)
+    out = Get_StructureFactor_with_Sunny(G, energies)
 
     # Plotting
     fig = Figure()
@@ -128,5 +111,5 @@ function main()
 end
 
 # Execute the program
-fig = main()
+fig = Export_G()
 display(fig)
