@@ -589,7 +589,7 @@ function main_calculation(config::LatticeConfig = default_triangular_config(),
         plot_lattice(results; show_crystal=show_crystal)
     end
     
-    return results
+    return results, sys
 end
 
 """
