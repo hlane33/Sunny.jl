@@ -1,6 +1,8 @@
-using ITensors, ITensorMPS, GLMakie, Sunny
+using ITensors, ITensorMPS, GLMakie, Sunny, FFTW
 include("sunny_toITensor.jl")
 include("ITensor_to_Sunny.jl")
+include("computesf.jl")
+include("MeasuredCorrelations")
 
 #################
 # Core Functions #
@@ -93,6 +95,9 @@ function Get_Structure_factor()
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
 
+
+    
+    # Using SampledCorrelations Augmentation
     # Compute structure factor
 
     energies = 0:0.05:5
@@ -110,8 +115,27 @@ function Get_Structure_factor()
     # 3. Plot
     fig = plot_intensities(res; units, title="Intensities")
 
-    
+    """
+    sys_dims = sys.dims
+    collect_ts = collect(ts)
+    energies = collect(0:0.05:5)
+    allowed_qs = collect(0:(1/N):2π)
+    positions = collect(1:N)
+    println(typeof(positions))
+    # Extract S(q,ω) for heatmap from computesf.jl:
+    Sqw, qs, ωs = process_quantum_correlations(G, collect_ts, η, sys_dims)
+
+   fig = Figure()
+    ax = Axis(fig[1, 1], 
+        xlabel = "Frequency ω",
+        ylabel = "q-point index",
+        title = "Dynamic Structure Factor S(q,ω)"
+    )
+
+    heatmap!(ax, ωs, qs, Sqw)
+
     return fig
+    """
 end
 
 # Execute the program
