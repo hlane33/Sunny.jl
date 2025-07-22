@@ -1,8 +1,7 @@
 using ITensors, ITensorMPS, GLMakie, Sunny, FFTW
 include("sunny_toITensor.jl")
 include("ITensor_to_Sunny.jl")
-include("computesf.jl")
-include("MeasuredCorrelations")
+
 
 #################
 # Core Functions #
@@ -81,8 +80,8 @@ function Get_Structure_factor()
         (0.0,)                 # noise
     )
 
-    custom_config = LatticeConfig(CHAIN_1D, N, N, 1, 1.0, 1/2, 1.0, 0.0, 0.0, true)
-    DMRG_results, sys = main_calculation(custom_config, custom_dmrg_config)
+    sys = create_chain_system(N; periodic_bc = true)
+    DMRG_results = calculate_ground_state(sys)
     ψ = DMRG_results.psi
     H = DMRG_results.H
     sites = DMRG_results.sites
@@ -104,16 +103,15 @@ function Get_Structure_factor()
     sc = Get_StructureFactor_with_Sunny(G, energies, sys)
 
     # Generate linearly spaced q-points
-    qs = [[0, 0, 0], [1/2, 0, 0], [1/2, 1/2, 0], [0, 0, 0]]
+    qs = [[0,0,0], [1,0,0]]
     cryst = sys.crystal
-    path = q_space_path(cryst, qs, 500)
-
-    # 2. Compute S(q, ω)
-    res = intensities(sc, path; energies, kT = nothing)
-    
+    path = q_space_path(cryst, qs, 401)
+    res = intensities(sc, path; energies, kT=nothing)
 
     # 3. Plot
-    fig = plot_intensities(res; units, title="Intensities")
+    fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain")
+
+    return fig
 
     """
     sys_dims = sys.dims
