@@ -1,5 +1,7 @@
 using Sunny, GLMakie, LinearAlgebra, Combinatorics
 
+PERMUTATIONS2 = collect(permutations(1:3))
+PERMUTATIONS1 = [[1,li...] for li in permutations(2:3)]
 
 function non_interacting_greens_function(ω, swt::SpinWaveTheory, q_reshaped;ϵ=0.0001)
     H = Sunny.dynamical_matrix(swt,q_reshaped)
@@ -7,78 +9,57 @@ function non_interacting_greens_function(ω, swt::SpinWaveTheory, q_reshaped;ϵ=
     A = diagm([ones(2L)...,-ones(2L)...])
     return inv( -(ω+im*ϵ)*A + H)
 end
+@inline δ(x, y) = (x==y)
 
-function delta_function(α1,α2)
-    if α1 == α2
-        return 1
-    else
-        return 0
-    end
-end
 
-# Define a helper function to compute the contributions
-function add_to_Ṽ(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+function add_to_Ṽ(α::NTuple{3,Int}, σ::NTuple{3,Int}, 
                    i, j, Ai, Bj, phase, Ṽ, M, N)
 
-    α1, α2, α3 = α[perm123[1]], α[perm123[2]], α[perm123[3]]
-    σ1, σ2, σ3 = σ[perm123[1]], σ[perm123[2]], σ[perm123[3]]
+    α1, α2, α3 = α
+    σ1, σ2, σ3 = σ
 
-    Ṽ[perm123][α1, α2, α3, σ1, σ2, σ3] += √(M) * (
-        -0.5*delta_function(α1,j)*delta_function(α2,j)*delta_function(α3,j)*
-             delta_function(σ1,σ2)*Ai[N,N]*Bj[N,σ3]
-        -0.5*delta_function(α1,i)*delta_function(α2,i)*delta_function(α3,i)*
-             delta_function(σ1,σ2)*Ai[N,σ3]*Bj[N,N]
-        +delta_function(α1,j)*delta_function(α2,j)*delta_function(α3,j)*
+    Ṽ[α1, α2, α3, σ1, σ2, σ3] += √(M) * (
+        -0.5*δ(α1,j)*δ(α2,j)*δ(α3,j)*
+             δ(σ1,σ2)*Ai[N,N]*Bj[N,σ3]
+        -0.5*δ(α1,i)*δ(α2,i)*δ(α3,i)*
+             δ(σ1,σ2)*Ai[N,σ3]*Bj[N,N]
+        +δ(α1,j)*δ(α2,j)*δ(α3,j)*
              conj(phase[3])*Ai[N,σ3]*Bj[σ1,σ2]
-        +delta_function(α1,j)*delta_function(α2,j)*delta_function(α3,j)*
+        +δ(α1,j)*δ(α2,j)*δ(α3,j)*
              phase[3]*Ai[N,σ3]*Bj[σ1,σ2]
     )
 end
 
-function add_to_Ṽ_onsite(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
-                   i, op, Ṽ, M, N)
-    α1, α2, α3 = α[perm123[1]], α[perm123[2]], α[perm123[3]]
-    σ1, σ2, σ3 = σ[perm123[1]], σ[perm123[2]], σ[perm123[3]]
 
-    Ṽ[perm123][α1, α2, α3, σ1, σ2, σ3] += 1/(2√(M))*op[N,σ3]* delta_function(α1,i)* delta_function(α2,i)* delta_function(α3,i)*delta_function(σ1,σ2)
+function add_to_Ṽ_onsite( α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+                   i, op, Ṽ, M, N)
+    α1, α2, α3 = α
+    σ1, σ2, σ3 = σ
+
+    Ṽ[α1, α2, α3, σ1, σ2, σ3] += 1/(2√(M))*op[N,σ3]* δ(α1,i)* δ(α2,i)* δ(α3,i)*δ(σ1,σ2)
 end
 
-function Vtildes(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+function Vtildes_light(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
     (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
     M = N
-    # Store Ṽ tensors indexed by permutations
-    Ṽ = Dict{NTuple{3, Int}, Array{ComplexF64, 6}}()
-    for perm in permutations(1:3)
-        Ṽ[Tuple(perm)] = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1)
-    end
+    Ṽ = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1)
     for (i, int) in enumerate(sys.interactions_union)
         for coupling in int.pair
-            # at this level we want to calculate Vij(123) Vα(123)
-            # put definition for V1m(i,j) into expression for Vij(1,2,3)
             (; isculled, bond) = coupling
             isculled && break
-
-            @assert i == bond.i
             j = bond.j
-
             phase1 = exp(2π*im * dot(q_reshaped1, bond.n)) # Phase associated with periodic wrapping
             phase2 = exp(2π*im * dot(q_reshaped2, bond.n)) # Phase associated with periodic wrapping
             phase3 = exp(2π*im * dot(q_reshaped3, bond.n)) # Phase associated with periodic wrapping
             phase=[phase1,phase2,phase3]
-
-            # Set "general" pair interactions of the form Aᵢ⊗Bⱼ. Note that Aᵢ
-            # and Bᵢ have already been transformed according to the local frames
-            # of sublattice i and j, respectively.
             for (Ai, Bj) in coupling.general.data 
                 for α1 in 1:Na, α2 in 1:Na, α3 in 1:Na
                     for σ1 in 1:N-1, σ2 in 1:N-1, σ3 in 1:N-1
                         α = (α1, α2, α3)
                         σ = (σ1, σ2, σ3)
-                        for perm in permutations(1:3)
-                            add_to_Ṽ(Tuple(perm), α, σ, i, j, Ai, Bj, phase, Ṽ, M,N)
-                        end
+                        add_to_Ṽ(α, σ, i, j, Ai, Bj, phase, Ṽ, M,N)
                     end
                 end
             end
@@ -87,15 +68,196 @@ function Vtildes(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
                 for σ1 in 1:N-1, σ2 in 1:N-1, σ3 in 1:N-1
                     α = (α1, α2, α3)
                     σ = (σ1, σ2, σ3)
-                    for perm in permutations(1:3)
-                        add_to_Ṽ_onsite(Tuple(perm), α, σ, i, op,  Ṽ, M,N)
-                    end
+                    add_to_Ṽ_onsite(α, σ, i, op,  Ṽ, M,N)
                 end
             end
         end
     end
     return Ṽ
 end
+
+
+
+function Vns_light(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+    (; sys, data) = swt
+    Na = Sunny.natoms(sys.crystal)
+    N = sys.Ns[1]
+    M = N
+    Nf = Na*(N-1)
+    V1out = zeros(ComplexF64,Nf,Nf,Nf)
+    V2out = zeros(ComplexF64,Nf,Nf,Nf)
+    qs = [q_reshaped1,q_reshaped2,q_reshaped3,-q_reshaped1,-q_reshaped2,-q_reshaped3]
+    Ṽ_list = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1,length(qs))
+    # Ts = zeros(ComplexF64,2Nf,2Nf,length(qs))
+    # Hs = zeros(ComplexF64,2Nf,2Nf,length(qs))
+    W11s = zeros(ComplexF64,Nf,Nf,length(qs))
+    W12s = zeros(ComplexF64,Nf,Nf,length(qs))
+    W21s = zeros(ComplexF64,Nf,Nf,length(qs))
+    W22s = zeros(ComplexF64,Nf,Nf,length(qs))
+    for (qi,q) ∈ enumerate(qs)
+        H, T = excitations(swt,q)
+        W11s[:,:,qi] .= T[1:Nf,1:Nf]
+        W21s[:,:,qi] .= T[Nf+1:end,1:Nf]
+        W12s[:,:,qi] .= T[1:Nf,Nf+1:end]
+        W22s[:,:,qi] .= T[Nf+1:end,Nf+1:end]
+        # Hs[:,:,qi] .= H
+        # Ts[:,:,qi] .= T
+    end
+    qtriplets = [(q_reshaped1,q_reshaped2,q_reshaped3),(q_reshaped3,q_reshaped2,q_reshaped1),(q_reshaped2,q_reshaped1,q_reshaped3),
+    (-q_reshaped1,-q_reshaped2,-q_reshaped3),(-q_reshaped3,-q_reshaped2,-q_reshaped1),(-q_reshaped3,-q_reshaped1,-q_reshaped2)]
+    for (qi,qt) in enumerate(qtriplets)
+        V = Vtildes_light(swt,qt[1],qt[2],qt[3]) 
+        Ṽ_list[:,:,:,:,:,:,qi]  = V
+    end
+    for α1 ∈ 1:Na, α2 ∈ 1:Na, α3 ∈ 1:Na 
+        for σ1 ∈ 1:N-1, σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
+            for n1 ∈ 1:Nf, n2 ∈ 1:Nf, n3  ∈ 1:Nf
+            V1out[n1,n2,n3] += Ṽ_list[:,:,:,:,:,:,1][α1, α2, α3,σ1, σ2, σ3] * W22s[α1+(N-1)*σ1,n1,1] * W11s[α2+(N-1)*σ2,n2,2] * W11s[α3+(N-1)*σ3,n3,3]  # Fix the 3 indices
+                 +  Ṽ_list[:,:,:,:,:,:,2][α1, α2, α3,σ1, σ2, σ3] * W21s[α1+(N-1)*σ1,n3,3] * W11s[α2+(N-1)*σ2,n2,2] * W12s[α3+(N-1)*σ3,n1,1]
+                 +  Ṽ_list[:,:,:,:,:,:,3][α1, α2, α3,σ1, σ2, σ3] * W21s[α1+(N-1)*σ1,n2,2] * W12s[α2+(N-1)*σ2,n1,1] * W11s[α3+(N-1)*σ3,n3,3]
+                
+                 +  Ṽ_list[:,:,:,:,:,:,4][α1, α2, α3,σ1, σ2, σ3] * conj(W21s[α1+(N-1)*σ1,n1,4]) * conj(W12s[α2+(N-1)*σ2,n2,5]) * conj(W12s[α3+(N-1)*σ3,n3,6])
+                 +  Ṽ_list[:,:,:,:,:,:,5][α1, α2, α3,σ1, σ2, σ3] * conj(W22s[α1+(N-1)*σ1,n3,6]) * conj(W12s[α2+(N-1)*σ2,n2,5]) * conj(W11s[α3+(N-1)*σ3,n1,4])
+                 +  Ṽ_list[:,:,:,:,:,:,6][α1, α2, α3,σ1, σ2, σ3] * conj(W22s[α1+(N-1)*σ1,n3,6]) * conj(W11s[α2+(N-1)*σ2,n1,4]) * conj(W12s[α3+(N-1)*σ3,n2,5])
+
+            V2out[n1,n2,n3] +=  Ṽ_list[:,:,:,:,:,:,1][α1, α2, α3,σ1, σ2, σ3] * W22s[α1+(N-1)*σ1,n1,1] * W12s[α2+(N-1)*σ2,n2,2] * W12s[α3+(N-1)*σ3,n3,3]
+                        +conj(Ṽ_list[:,:,:,:,:,:,6][α1, α2, α3,σ1, σ2, σ3]) * conj(W21s[α1+(N-1)*σ1,n3,6]) * conj(W11s[α2+(N-1)*σ2,n2,5]) * conj(W12s[α3+(N-1)*σ3,n1,4])  
+            end
+        end
+    end
+    return V1out, V2out 
+end
+
+
+function Vns_precalc(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+    (; sys, data) = swt
+    Na = Sunny.natoms(sys.crystal)
+    N = sys.Ns[1]
+    M = N
+    Nf = Na*(N-1)
+    V1out = zeros(ComplexF64,Nf,Nf,Nf)
+    V2out = zeros(ComplexF64,Nf,Nf,Nf)
+    qs = [q_reshaped1,q_reshaped2,q_reshaped3,-q_reshaped1,-q_reshaped2,-q_reshaped3]
+    Ṽ_list = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1,length(qs))
+    # Ts = zeros(ComplexF64,2Nf,2Nf,length(qs))
+    # Hs = zeros(ComplexF64,2Nf,2Nf,length(qs))
+    W11s = zeros(ComplexF64,Nf,Nf,length(qs))
+    W12s = zeros(ComplexF64,Nf,Nf,length(qs))
+    W21s = zeros(ComplexF64,Nf,Nf,length(qs))
+    W22s = zeros(ComplexF64,Nf,Nf,length(qs))
+    for (qi,q) ∈ enumerate(qs)
+        H, T = excitations(swt,q)
+        W11s[:,:,qi] .= T[1:Nf,1:Nf]
+        W21s[:,:,qi] .= T[Nf+1:end,1:Nf]
+        W12s[:,:,qi] .= T[1:Nf,Nf+1:end]
+        W22s[:,:,qi] .= T[Nf+1:end,Nf+1:end]
+        # Hs[:,:,qi] .= H
+        # Ts[:,:,qi] .= T
+    end
+    qtriplets = [(q_reshaped1,q_reshaped2,q_reshaped3),(q_reshaped3,q_reshaped2,q_reshaped1),(q_reshaped2,q_reshaped1,q_reshaped3),
+    (-q_reshaped1,-q_reshaped2,-q_reshaped3),(-q_reshaped3,-q_reshaped2,-q_reshaped1),(-q_reshaped3,-q_reshaped1,-q_reshaped2)]
+    for (qi,qt) in enumerate(qtriplets)
+        V = Vtildes_light(swt,qt[1],qt[2],qt[3]) 
+        Ṽ_list[:,:,:,:,:,:,qi]  = V
+    end
+    return Ṽ_list, W11s, W12s, W21s, W22s
+end
+
+function Vns_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped3)
+       (; sys, data) = swt
+        Na = Sunny.natoms(sys.crystal)
+        N = sys.Ns[1]
+        M = N
+        Nf = Na*(N-1)
+        V1out = zeros(ComplexF64,Nf,Nf,Nf)
+       for α1 ∈ 1:Na, α2 ∈ 1:Na, α3 ∈ 1:Na 
+        for σ1 ∈ 1:N-1, σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
+            for n1 ∈ 1:Nf, n2 ∈ 1:Nf, n3  ∈ 1:Nf
+            V1out[n1,n2,n3] += Ṽ_list[:,:,:,:,:,:,1][α1, α2, α3,σ1, σ2, σ3] * W22s[α1+(N-1)*σ1,n1,1] * W11s[α2+(N-1)*σ2,n2,2] * W11s[α3+(N-1)*σ3,n3,3]  # Fix the 3 indices
+                 +  Ṽ_list[:,:,:,:,:,:,2][α1, α2, α3,σ1, σ2, σ3] * W21s[α1+(N-1)*σ1,n3,3] * W11s[α2+(N-1)*σ2,n2,2] * W12s[α3+(N-1)*σ3,n1,1]
+                 +  Ṽ_list[:,:,:,:,:,:,3][α1, α2, α3,σ1, σ2, σ3] * W21s[α1+(N-1)*σ1,n2,2] * W12s[α2+(N-1)*σ2,n1,1] * W11s[α3+(N-1)*σ3,n3,3]
+                
+                 +  Ṽ_list[:,:,:,:,:,:,4][α1, α2, α3,σ1, σ2, σ3] * conj(W21s[α1+(N-1)*σ1,n1,4]) * conj(W12s[α2+(N-1)*σ2,n2,5]) * conj(W12s[α3+(N-1)*σ3,n3,6])
+                 +  Ṽ_list[:,:,:,:,:,:,5][α1, α2, α3,σ1, σ2, σ3] * conj(W22s[α1+(N-1)*σ1,n3,6]) * conj(W12s[α2+(N-1)*σ2,n2,5]) * conj(W11s[α3+(N-1)*σ3,n1,4])
+                 +  Ṽ_list[:,:,:,:,:,:,6][α1, α2, α3,σ1, σ2, σ3] * conj(W22s[α1+(N-1)*σ1,n3,6]) * conj(W11s[α2+(N-1)*σ2,n1,4]) * conj(W12s[α3+(N-1)*σ3,n2,5])
+            end
+        end
+    end
+    return V1out
+end
+
+function Vns_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped3)
+       (; sys, data) = swt
+        Na = Sunny.natoms(sys.crystal)
+        N = sys.Ns[1]
+        M = N
+        Nf = Na*(N-1)
+        V2out = zeros(ComplexF64,Nf,Nf,Nf)
+       for α1 ∈ 1:Na, α2 ∈ 1:Na, α3 ∈ 1:Na 
+        for σ1 ∈ 1:N-1, σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
+            for n1 ∈ 1:Nf, n2 ∈ 1:Nf, n3  ∈ 1:Nf
+                V2out[n1,n2,n3] +=  Ṽ_list[:,:,:,:,:,:,1][α1, α2, α3,σ1, σ2, σ3] * W22s[α1+(N-1)*σ1,n1,1] * W12s[α2+(N-1)*σ2,n2,2] * W12s[α3+(N-1)*σ3,n3,3]
+                                        +conj(Ṽ_list[:,:,:,:,:,:,6][α1, α2, α3,σ1, σ2, σ3]) * conj(W21s[α1+(N-1)*σ1,n3,6]) * conj(W11s[α2+(N-1)*σ2,n2,5]) * conj(W12s[α3+(N-1)*σ3,n1,4])  
+            end
+        end
+    end
+    return V2out
+end
+
+function VS_light(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+    Nf = 8
+    qs = [q_reshaped1,q_reshaped2,q_reshaped3]
+
+    qs_1 =  [qs[p] for p in PERMUTATIONS1]
+    qs_2 =  [qs[p] for p in PERMUTATIONS2]
+
+    Ṽ_list, W11s, W12s, W21s, W22s = Vns_precalc(swt,q_reshaped,q_reshaped2,q_reshaped3)
+    V = zeros(ComplexF64,Nf,Nf,Nf)
+    for (pi,perm) ∈ enumerate(PERMUTATIONS1)
+        q1, q2, q3 = qs[perm]
+        V1 = Vns_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped)
+        V+= permutedims(V1,perm)
+    end
+        for (pi,perm) ∈ enumerate(PERMUTATIONS2)
+        q1, q2, q3 = qs[perm]
+        V2 = Vns_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped)
+        V+= permutedims(V2,perm)
+    end
+    return V
+
+end
+
+
+@time VS_light(swt,q_reshaped,q_reshaped,q_reshaped)
+
+
+
+H, T =excitations(swt,q_reshaped)
+
+T
+function Ws(swt::SpinWaveTheory,q_reshaped)
+    H, T = excitations(swt,q_reshaped) 
+    Nf = size(T)[1]
+    W11 = T[1:Nf,1:Nf]
+    W21 = T[Nf+1:end,1:Nf]
+    W12 = T[1:Nf,Nf+1:end]
+    W22 = T[Nf+1:end,Nf+1:end]
+    return W11,W12,W21,W22 
+end
+
+
+
+
+V = Vtildes(swt,q_reshaped,q_reshaped,q_reshaped)
+V[(1,2,3)][1,1,1,1,1,1]
+
+Vs = [V[(1,2,3)],V[(1,2,3)],V[(1,2,3)]]
+
+Vs[1][1,1,1,1,1,1]
+
+######################################################################################################################################################
+######################################################################################################################################################
+
 
 function Vns(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3,perm)
     (; sys, data) = swt
@@ -136,7 +298,7 @@ function Vns(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3,perm)
     (-q_reshaped1,-q_reshaped2,-q_reshaped3),(-q_reshaped3,-q_reshaped2,-q_reshaped1),(-q_reshaped3,-q_reshaped1,-q_reshaped2)]
     for qt in qtriplets
         V = Vtildes(swt,qt[1],qt[2],qt[3]) 
-        push!(Ṽ_list, V[perm])
+        push!(Ṽ_list, V[(1,2,3)])
     end
     for α1 ∈ 1:Na, α2 ∈ 1:Na, α3 ∈ 1:Na 
         for σ1 ∈ 1:N-1, σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
@@ -158,26 +320,85 @@ function Vns(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3,perm)
 end
 
 
-@time Vns(swt,q_reshaped,q_reshaped,q_reshaped,[])
-H, T =excitations(swt,q_reshaped)
+function Vtildes(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+    (; sys, data) = swt
+    Na = Sunny.natoms(sys.crystal)
+    N = sys.Ns[1]
+    M = N
+    # Store Ṽ tensors indexed by permutations
+    Ṽ = Dict{NTuple{3, Int}, Array{ComplexF64, 6}}()
+    for perm in permutations(1:3)
+        Ṽ[Tuple(perm)] = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1)
+    end
+    for (i, int) in enumerate(sys.interactions_union)
+        for coupling in int.pair
+            # at this level we want to calculate Vij(123) Vα(123)
+            # put definition for V1m(i,j) into expression for Vij(1,2,3)
+            (; isculled, bond) = coupling
+            isculled && break
 
-T
-function Ws(swt::SpinWaveTheory,q_reshaped)
-    H, T = excitations(swt,q_reshaped) 
-    Nf = size(T)[1]
-    W11 = T[1:Nf,1:Nf]
-    W21 = T[Nf+1:end,1:Nf]
-    W12 = T[1:Nf,Nf+1:end]
-    W22 = T[Nf+1:end,Nf+1:end]
-    return W11,W12,W21,W22 
+            @assert i == bond.i
+            j = bond.j
+
+            phase1 = exp(2π*im * dot(q_reshaped1, bond.n)) # Phase associated with periodic wrapping
+            phase2 = exp(2π*im * dot(q_reshaped2, bond.n)) # Phase associated with periodic wrapping
+            phase3 = exp(2π*im * dot(q_reshaped3, bond.n)) # Phase associated with periodic wrapping
+            phase=[phase1,phase2,phase3]
+
+            # Set "general" pair interactions of the form Aᵢ⊗Bⱼ. Note that Aᵢ
+            # and Bᵢ have already been transformed according to the local frames
+            # of sublattice i and j, respectively.
+            for (Ai, Bj) in coupling.general.data 
+                for α1 in 1:Na, α2 in 1:Na, α3 in 1:Na
+                    for σ1 in 1:N-1, σ2 in 1:N-1, σ3 in 1:N-1
+                        α = (α1, α2, α3)
+                        σ = (σ1, σ2, σ3)
+                        for perm in PERMUTATIONS
+                            add_to_Ṽ(Tuple(perm), α, σ, i, j, Ai, Bj, phase, Ṽ, M,N)
+                        end
+                    end
+                end
+            end
+            op = int.onsite
+            for α1 in 1:Na, α2 in 1:Na, α3 in 1:Na
+                for σ1 in 1:N-1, σ2 in 1:N-1, σ3 in 1:N-1
+                    α = (α1, α2, α3)
+                    σ = (σ1, σ2, σ3)
+                    for perm in PERMUTATIONS
+                        add_to_Ṽ_onsite(Tuple(perm), α, σ, i, op,  Ṽ, M,N)
+                    end
+                end
+            end
+        end
+    end
+    return Ṽ
 end
 
 
+# Define a helper function to compute the contributions
+function add_to_Ṽ(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+                   i, j, Ai, Bj, phase, Ṽ, M, N)
 
+    α1, α2, α3 = α[perm123[1]], α[perm123[2]], α[perm123[3]]
+    σ1, σ2, σ3 = σ[perm123[1]], σ[perm123[2]], σ[perm123[3]]
 
-V = Vtildes(swt,q_reshaped,q_reshaped,q_reshaped)
-V[(1,2,3)][1,1,1,1,1,1]
+    Ṽ[perm123][α1, α2, α3, σ1, σ2, σ3] += √(M) * (
+        -0.5*δ(α1,j)*δ(α2,j)*δ(α3,j)*
+             δ(σ1,σ2)*Ai[N,N]*Bj[N,σ3]
+        -0.5*δ(α1,i)*δ(α2,i)*δ(α3,i)*
+             δ(σ1,σ2)*Ai[N,σ3]*Bj[N,N]
+        +δ(α1,j)*δ(α2,j)*δ(α3,j)*
+             conj(phase[3])*Ai[N,σ3]*Bj[σ1,σ2]
+        +δ(α1,j)*δ(α2,j)*δ(α3,j)*
+             phase[3]*Ai[N,σ3]*Bj[σ1,σ2]
+    )
+end
 
-Vs = [V[(1,2,3)],V[(1,2,3)],V[(1,2,3)]]
+function add_to_Ṽ_onsite(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+                   i, op, Ṽ, M, N)
+    α1, α2, α3 = α[perm123[1]], α[perm123[2]], α[perm123[3]]
+    σ1, σ2, σ3 = σ[perm123[1]], σ[perm123[2]], σ[perm123[3]]
 
-Vs[1][1,1,1,1,1,1]
+    Ṽ[perm123][α1, α2, α3, σ1, σ2, σ3] += 1/(2√(M))*op[N,σ3]* δ(α1,i)* δ(α2,i)* δ(α3,i)*δ(σ1,σ2)
+end
+
