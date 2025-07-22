@@ -60,7 +60,7 @@ function get_quantum_correlations(N_sites::Int, energies, sys; dt)
     #sampled correlations is expecting
     positions = zeros(Vec3, 1, 1, 1, N_sites)
     sc = SampledCorrelations(sys; 
-                           measure = ssf_custom((q, ssf) -> ssf[3, 3], sys;apply_g=false),
+                           measure = ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
                            energies=energies, 
                            positions = positions,
                            dt=dt, 
