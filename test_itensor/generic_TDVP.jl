@@ -94,7 +94,7 @@ function Get_Structure_factor()
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
 
-
+    """
     
     # Using SampledCorrelations Augmentation
     # Compute structure factor
@@ -133,7 +133,7 @@ function Get_Structure_factor()
     heatmap!(ax, ωs, qs, Sqw)
 
     return fig
-    """
+    
 end
 
 # Execute the program

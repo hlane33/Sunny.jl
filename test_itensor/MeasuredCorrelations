@@ -1,0 +1,165 @@
+"""
+Quantum analog of SampledCorrelations that works with pre-computed correlation data
+"""
+mutable struct QuantumCorrelations
+    # S^{αβ}(q,ω) data and metadata  
+    const data           :: Array{ComplexF64, 7}                 # Processed SF data (ncorrs × natoms × natoms × sys_dims × nω)
+    const raw_correlations :: Array{ComplexF64, 2}               # Original G(i,t) data (nsites × ntimes)
+    const crystal        :: Crystal                              # Crystal for interpretation of q indices
+    const Δω             :: Float64                              # Energy step size
+    const ωs             :: Vector{Float64}                      # Frequency array
+    const ts             :: Vector{Float64}                      # Time array used in computation
+    const η              :: Float64                              # Damping parameter used
+    
+    # System information
+    const sys_dims       :: Tuple{Int,Int,Int}                   # System dimensions
+    const natoms         :: Int                                  # Number of atoms per unit cell
+    const nsites         :: Int                                  # Total number of sites
+    
+    # FFT plans for processing
+    const space_fft!     :: FFTW.AbstractFFTs.Plan               # Pre-planned lattice FFT
+    const time_fft!      :: FFTW.AbstractFFTs.Plan               # Pre-planned time FFT
+    
+    # Sample count (for compatibility with SampledCorrelations interface)
+    nsamples             :: Int                                  # Always 1 for quantum case
+end
+
+"""
+    QuantumCorrelations(G::Array{ComplexF64,2}, ts::Vector{Float64}, η::Float64, 
+                       crystal::Crystal, sys_dims::Tuple{Int,Int,Int})
+
+Create a QuantumCorrelations object from pre-computed correlation data G(i,t).
+
+# Arguments
+- `G`: Correlation matrix of size (nsites, ntimes)  
+- `ts`: Time array used in the correlation computation
+- `η`: Damping parameter used in the correlation computation
+- `crystal`: Crystal structure for the system
+- `sys_dims`: Dimensions of the system (Lx, Ly, Lz)
+"""
+function QuantumCorrelations(G::Array{ComplexF64,2}, ts::Vector{Float64}, η::Float64, 
+                           crystal::Crystal, sys_dims::Tuple{Int,Int,Int})
+    
+    nsites, ntimes = size(G)
+    natoms_per_cell = natoms(crystal)
+    
+    # Verify system consistency
+    expected_sites = prod(sys_dims) * natoms_per_cell
+    @assert nsites == expected_sites "Number of sites in G ($nsites) doesn't match system dimensions and atoms per cell ($expected_sites)"
+    
+    # Compute frequencies from time array
+    dt = ts[2] - ts[1]
+    ωs_raw = fftfreq(ntimes, 1/dt) .* 2π
+    ωs = fftshift(ωs_raw)
+    Δω = abs(ωs[2] - ωs[1])
+    
+    # Process correlations to get S(q,ω)
+    data, space_fft!, time_fft! = process_quantum_correlations(G, ts, η, sys_dims, natoms_per_cell)
+    
+    return QuantumCorrelations(
+        data, copy(G), crystal, Δω, ωs, copy(ts), η,
+        sys_dims, natoms_per_cell, nsites,
+        space_fft!, time_fft!, 1
+    )
+end
+
+"""
+Process quantum correlation data G(i,t) to compute S(q,ω)
+"""
+function process_quantum_correlations(G::Array{ComplexF64,2}, ts::Vector{Float64}, η::Float64, 
+                                    sys_dims::Tuple{Int,Int,Int}, natoms::Int)
+    nsites, ntimes = size(G)
+    dt = ts[2] - ts[1]
+    
+    # Reshape G to have spatial structure: (Lx, Ly, Lz, natoms, ntimes)
+    G_spatial = reshape(G, sys_dims..., natoms, ntimes)
+    
+    # Create buffer for FFT operations
+    samplebuf = zeros(ComplexF64, 1, sys_dims..., natoms, ntimes)  # 1 observable (Sz-Sz correlation)
+    samplebuf[1, :, :, :, :, :] = G_spatial
+    
+    # Apply exponential window in time
+    window = exp.(-η .* ts)
+    window ./= sum(window)  # Normalize window
+    
+    for i in axes(samplebuf, 2), j in axes(samplebuf, 3), k in axes(samplebuf, 4), α in axes(samplebuf, 5)
+        samplebuf[1, i, j, k, α, :] .*= window
+    end
+    
+    # Set up FFT plans
+    space_fft! = 1/√prod(sys_dims) * FFTW.plan_fft!(samplebuf, (2,3,4))
+    time_fft! = FFTW.plan_fft!(samplebuf, 6)
+    
+    # Apply spatial FFT to get q-dependence
+    space_fft! * samplebuf
+    
+    # Apply temporal FFT to get frequency dependence  
+    time_fft! * samplebuf
+    
+    # Compute power spectral density and arrange as S(q,ω)
+    # Output format: (ncorrs=1, natoms, natoms, Lx, Ly, Lz, nω)
+    data = zeros(ComplexF64, 1, natoms, natoms, sys_dims..., ntimes)
+    
+    # For autocorrelations (same atom type correlations)
+    for α in 1:natoms
+        data[1, α, α, :, :, :, :] = abs.(samplebuf[1, :, :, :, α, :]).^2
+    end
+    
+    # Shift frequencies to standard order
+    data = fftshift(data, dims=7)
+    
+    return data, space_fft!, time_fft!
+end
+
+"""
+    intensities(qc::QuantumCorrelations, qs; kwargs...)
+
+Extract intensities S(q,ω) at specified q-points, similar to the SampledCorrelations interface.
+"""
+function quantum_intensities(qc::QuantumCorrelations, qs; 
+                    correlations=nothing, 
+                    formula=:trace,
+                    interpolation=:none)
+    
+    nqs = size(qs, 2)
+    nω = length(qc.ωs)
+    
+    # Initialize output array
+    intensities_out = zeros(Float64, nqs, nω)
+    
+    # Convert q-points to indices in the FFT grid
+    for (iq, q) in enumerate(eachcol(qs))
+        # Convert q from RLU to grid indices
+        qx_idx = mod(round(Int, q[1] * qc.sys_dims[1]), qc.sys_dims[1]) + 1
+        qy_idx = mod(round(Int, q[2] * qc.sys_dims[2]), qc.sys_dims[2]) + 1  
+        qz_idx = mod(round(Int, q[3] * qc.sys_dims[3]), qc.sys_dims[3]) + 1
+        
+        # Extract intensity (taking trace over atom indices for now)
+        for iω in 1:nω
+            intensity = 0.0
+            for α in 1:qc.natoms
+                intensity += real(qc.data[1, α, α, qx_idx, qy_idx, qz_idx, iω])
+            end
+            intensities_out[iq, iω] = intensity
+        end
+    end
+    
+    return intensities_out
+end
+
+
+
+# Utility functions for compatibility with SampledCorrelations interface
+Base.getproperty(qc::QuantumCorrelations, sym::Symbol) = getfield(qc, sym)
+
+function Base.show(io::IO, ::MIME"text/plain", qc::QuantumCorrelations)
+    nω = length(qc.ωs)
+    printstyled(io, "QuantumCorrelations"; bold=true, color=:underline)
+    println(io," ($(Base.format_bytes(Base.summarysize(qc))))")
+    print(io,"[")
+    printstyled(io,"S(q,ω)"; bold=true)
+    print(io," | nω = $nω, Δω = $(round(qc.Δω, digits=4))")
+    println(io," | quantum correlation data]")
+    println(io,"Lattice: $(qc.sys_dims) × $(qc.natoms)")
+    println(io,"Damping: η = $(qc.η)")
+end
