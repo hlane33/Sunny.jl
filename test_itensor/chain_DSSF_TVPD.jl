@@ -92,10 +92,8 @@ function main()
         (0.0,)                 # noise
     )
 
-    custom_chain_config = LatticeConfig(CHAIN_1D, N, 1, 1, 1.0, 1/2, 1.0, 0.0, 0.0, false)
-    lattice_type = custom_chain_config.lattice_type
-    lattice_size = custom_chain_config.Lx
-    DMRG_results = main_calculation(custom_chain_config, custom_dmrg_config)
+    sys = create_chain_system(20; periodic_bc = true)
+    DMRG_results = calculate_ground_state(sys)
     ψ = DMRG_results.psi
     H = DMRG_results.H
     sites = DMRG_results.sites
@@ -123,7 +121,7 @@ function main()
               xlabel = "qₓ",
               xticks = ([0, allowed_qs[end]], ["0", "2π"]),
               ylabel = "Energy (meV)",
-              title = "S=1/2 AFM DMRG/TDVP for $lattice_type Lattice with N = $lattice_size")
+              title = "S=1/2 AFM DMRG/TDVP for Chain lattice")
     Makie.heatmap!(ax, allowed_qs, energies, out,
              colorrange = (0, 0.5 * maximum(out)))
     ylims!(ax, 0, 5)
