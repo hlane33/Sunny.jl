@@ -82,7 +82,7 @@ function build_hamiltonian_from_bonds(bond_pairs, sys::System; conserve_qns=true
     sites = siteinds("S=1/2", N; conserve_qns=conserve_qns)
     
     os = OpSum()
-    
+    #Currently only does nearest neighbour coupling
     for (i, j, coupling) in bond_pairs
         # Extract coupling matrix elements
         J_xx = coupling[1, 1]  # SxSx coupling
@@ -211,7 +211,7 @@ end
 
 # ============================================================================
 # HELPER FUNCTIONS FOR CONSTRUCTING COMMON LATTICE TYPES 
-# JUST HELPS ME WHEN TESTING COULD FEASIBLY DO ANY LATTICE
+# JUST HELPS ME WHEN TESTING, COULD FEASIBLY DO ANY LATTICE
 # ============================================================================
 
 """
@@ -282,12 +282,12 @@ function create_chain_system(Lx::Int;
                             J1::Float64=1.0, J2::Float64=0.0,
                             periodic_bc::Bool=false)
     
-    # Create crystal
+   # Create crystal
     latvecs = lattice_vectors(a, 10*a, 10*a, 90, 90, 90)
     crystal = Crystal(latvecs, [[0, 0, 0]])
     
     # Create system
-    pbc = (true, !periodic_bc, true)
+    pbc = (!periodic_bc, true, true)
     sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
     
     # Set exchanges
@@ -336,15 +336,34 @@ function create_honeycomb_system(Lx::Int, Ly::Int, Lz::Int=1;
 end
 
 # ============================================================================
-#  USAGE
+#  TEST USAGE
 # ============================================================================
 
+
+"""
 println("=== DMRG Calculation ===")
 
-sys_inhom = create_square_system(5,5,periodic_bc=true)
+
+#create Kagome
+Lx = 4
+Ly = 7
+pbc = (true, false, true)
+
+units = Units(:meV, :angstrom)
+latvecs = lattice_vectors(6, 6, 5, 90, 90, 120)
+positions = [[1/2, 0, 0]]
+cryst = Crystal(latvecs, positions, 147)
+sys = System(cryst, [1 => Moment(s=1, g=2)], :dipole)
+J = -1.0
+set_exchange!(sys, J, Bond(2, 3, [0, 0, 0]))
+sys = repeat_periodically(sys, (Lx, Ly, 1))
+sys_inhom = to_inhomogeneous(sys)
+remove_periodicity!(sys_inhom, pbc)
 
 # Calculate ground state
 custom_results = calculate_ground_state(sys_inhom; 
                                       conserve_qns=true,  # Off-diagonal terms break QN conservation
                                       )
+println("END")
 
+"""
