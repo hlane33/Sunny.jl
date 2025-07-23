@@ -1,6 +1,8 @@
 using ITensors, ITensorMPS, GLMakie, Sunny, FFTW
 include("sunny_toITensor.jl")
 include("ITensor_to_Sunny.jl")
+include("MeasuredCorrelations.jl")
+
 
 
 #################
@@ -53,6 +55,7 @@ function compute_G(N, ψ, ϕ, H, sites, η, ts, tstep, cutoff, maxdim)
         end
         println("finished t = $t")
     end
+    print("Size of G",size(G))
     return G
 end
 
@@ -80,6 +83,7 @@ function Get_Structure_factor()
         (0.0,)                 # noise
     )
 
+    
     sys = create_chain_system(N; periodic_bc = true)
     DMRG_results = calculate_ground_state(sys)
     ψ = DMRG_results.psi
@@ -93,17 +97,19 @@ function Get_Structure_factor()
 
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
+    energies = 0:0.05:5
+    qs = [[0,0,0], [2,0,0]]
+    positions = 1:N
 
-    """
-    
-    # Using SampledCorrelations Augmentation
+   
+   
+    # Using SampledCorrelations Augmentation (INTEGRATED WAY)
     # Compute structure factor
 
-    energies = 0:0.05:5
-    sc = Get_StructureFactor_with_Sunny(G, energies, sys)
+    
+    sc = Get_StructureFactor_with_Sunny(G, energies, sys, η, ts)
 
     # Generate linearly spaced q-points
-    qs = [[0,0,0], [1,0,0]]
     cryst = sys.crystal
     path = q_space_path(cryst, qs, 401)
     res = intensities(sc, path; energies, kT=nothing)
@@ -114,25 +120,31 @@ function Get_Structure_factor()
     return fig
 
     """
-    sys_dims = sys.dims
-    collect_ts = collect(ts)
-    energies = collect(0:0.05:5)
-    allowed_qs = collect(0:(1/N):2π)
-    positions = collect(1:N)
-    println(typeof(positions))
-    # Extract S(q,ω) for heatmap from computesf.jl:
-    Sqw, qs, ωs = process_quantum_correlations(G, collect_ts, η, sys_dims)
 
-   fig = Figure()
-    ax = Axis(fig[1, 1], 
-        xlabel = "Frequency ω",
-        ylabel = "q-point index",
-        title = "Dynamic Structure Factor S(q,ω)"
-    )
+    # UNINTEGRATED WAY
+    # Example usage (pseudocode)
 
-    heatmap!(ax, ωs, qs, Sqw)
+    
+    time_points = collect(ts)
 
+    # 2. Create the QuantumCorrelations object
+    qc = QuantumCorrelations(G, time_points, η, 
+                            sys)
+
+    # Generate linearly spaced q-points
+    cryst = sys.crystal
+    path = q_space_path(cryst, qs, 401)
+    res = intensities(qc, path; energies, kT=nothing)
+
+    # 3. Plot
+    fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain")
+
+    
     return fig
+    """
+
+    
+    
     
 end
 
