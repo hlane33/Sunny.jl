@@ -199,3 +199,25 @@ function plot_bonds_from_pairs!(ax, bond_pairs, sites, target_coupling, color, s
     println("Plotted $bonds_plotted bonds for coupling $target_coupling")
     return bonds_plotted
 end
+
+"""
+Analyze bond structure for any system.
+"""
+function analyze_bond_structure(bonds, couplings, sys::System)
+    println("\nBond Structure Analysis:")
+    println("System dimensions: $(sys.dims)")
+    println("Basis sites per unit cell: $(length(sys.crystal.positions))")
+    println("Total bonds: $(length(bonds))")
+    
+    for (coupling, bond_list) in couplings
+        println("  Coupling J = $coupling: $(length(bond_list)) bonds")
+        if length(bond_list) ≤ 10
+            for (i, j) in bond_list[1:min(5, length(bond_list))]
+                println("    ($i, $j)")
+            end
+            if length(bond_list) > 5
+                println("    ... and $(length(bond_list) - 5) more")
+            end
+        end
+    end
+end
