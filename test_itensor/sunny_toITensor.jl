@@ -137,28 +137,6 @@ function run_dmrg(H, psi0, dmrg_config::DMRGConfig)
 end
 
 """
-Analyze bond structure for any system.
-"""
-function analyze_bond_structure(bonds, couplings, sys::System)
-    println("\nBond Structure Analysis:")
-    println("System dimensions: $(sys.dims)")
-    println("Basis sites per unit cell: $(length(sys.crystal.positions))")
-    println("Total bonds: $(length(bonds))")
-    
-    for (coupling, bond_list) in couplings
-        println("  Coupling J = $coupling: $(length(bond_list)) bonds")
-        if length(bond_list) ≤ 10
-            for (i, j) in bond_list[1:min(5, length(bond_list))]
-                println("    ($i, $j)")
-            end
-            if length(bond_list) > 5
-                println("    ... and $(length(bond_list) - 5) more")
-            end
-        end
-    end
-end
-
-"""
 Main DMRG calculation function - works with any Sunny system.
 Takes a pre-constructed Sunny system and runs DMRG on it.
 """
@@ -288,7 +266,7 @@ function create_chain_system(Lx::Int;
     
     # Create system
     pbc = (!periodic_bc, true, true)
-    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
+    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole; dims=(Lx,1,1))
     
     # Set exchanges
     nn_bond = Bond(1, 1, [1, 0, 0])
@@ -297,7 +275,6 @@ function create_chain_system(Lx::Int;
     set_exchange!(sys, J2, nnn_bond)
     
     # Repeat and make inhomogeneous
-    sys = repeat_periodically(sys, (Lx, 1, 1))
     sys_inhom = to_inhomogeneous(sys)
     remove_periodicity!(sys_inhom, pbc)
     
