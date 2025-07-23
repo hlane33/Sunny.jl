@@ -11,14 +11,17 @@ function non_interacting_greens_function(ω, swt::SpinWaveTheory, q;ϵ=0.0001)
 end
 @inline δ(x, y) = (x==y)
 
+# function idx(α, σ, N)
+#     return α + (N - 1) * (σ - 1)
+# end
+
 function idx(α, σ, N)
-    return α + (N - 1) * (σ - 1)
+    return σ + (N - 1) * (α - 1)
 end
 
 
-idx(4,1,3)
 
-function add_to_Ṽ(α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+function add_Ṽ123(α::NTuple{3,Int}, σ::NTuple{3,Int}, 
                    i, j, Ai, Bj, phase, Ṽ, M, N)
     α1, α2, α3 = α
     σ1, σ2, σ3 = σ
@@ -29,13 +32,12 @@ function add_to_Ṽ(α::NTuple{3,Int}, σ::NTuple{3,Int},
         # -δ(σ1,σ2)*Bj[N,N]     # this factor appears in notes
         )
         +δ(α1,i)*δ(α2,i)*δ(α3,j)*phase[3]*Bj[N,σ3]*(Ai[σ1,σ2]
-        # -δ(σ1,σ2))*Ai[N,N]
-        )
-    )
+        # -δ(σ1,σ2)*Ai[N,N]  # this factor appears in notes
+        )   )
 end
 
 
-function add_to_Ṽ_onsite( α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+function add_Ṽ123_onsite( α::NTuple{3,Int}, σ::NTuple{3,Int}, 
                    i, op, Ṽ, M, N)
     α1, α2, α3 = α
     σ1, σ2, σ3 = σ
@@ -44,11 +46,11 @@ function add_to_Ṽ_onsite( α::NTuple{3,Int}, σ::NTuple{3,Int},
 end
 
 
-function Vtildes_light(swt::SpinWaveTheory,q1,q2,q3)
+function vertex_initial(swt::SpinWaveTheory,q1,q2,q3)
     (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
-    M = N
+    M = 1
     Ṽ = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1)
     for (i, int) in enumerate(sys.interactions_union)
         for coupling in int.pair
@@ -64,7 +66,7 @@ function Vtildes_light(swt::SpinWaveTheory,q1,q2,q3)
                     for σ1 in 1:N-1, σ2 in 1:N-1, σ3 in 1:N-1
                         α = (α1, α2, α3)
                         σ = (σ1, σ2, σ3)
-                        add_to_Ṽ(α, σ, i, j, Ai, Bj, phase, Ṽ, M,N)
+                        add_Ṽ123(α, σ, i, j, Ai, Bj, phase, Ṽ, M,N)
                     end
                 end
             end
@@ -73,7 +75,7 @@ function Vtildes_light(swt::SpinWaveTheory,q1,q2,q3)
                 for σ1 in 1:N-1, σ2 in 1:N-1, σ3 in 1:N-1
                     α = (α1, α2, α3)
                     σ = (σ1, σ2, σ3)
-                    add_to_Ṽ_onsite(α, σ, i, op,  Ṽ, M,N)
+                    add_Ṽ123_onsite(α, σ, i, op,  Ṽ, M,N)
                 end
             end
         end
@@ -81,14 +83,12 @@ function Vtildes_light(swt::SpinWaveTheory,q1,q2,q3)
     return Ṽ
 end
 
-function Vns_precalc(swt::SpinWaveTheory,q1,q2,q3)
+function vertex_diag_precalc(swt::SpinWaveTheory,q1,q2,q3)
     (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
-    M = N
+    M = 1
     Nf = Na*(N-1)
-    V1out = zeros(ComplexF64,Nf,Nf,Nf)
-    V2out = zeros(ComplexF64,Nf,Nf,Nf)
     qs = [q1,q2,q3,-q1,-q2,-q3]
     Ṽ_list = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1,length(qs))
     # Ts = zeros(ComplexF64,2Nf,2Nf,length(qs))
@@ -109,45 +109,13 @@ function Vns_precalc(swt::SpinWaveTheory,q1,q2,q3)
     qtriplets = [(q1,q2,q3),(q3,q2,q1),(q2,q1,q3),
     (-q1,-q2,-q3),(-q3,-q2,-q1),(-q3,-q1,-q2)]
     for (qi,qt) in enumerate(qtriplets)
-        V = Vtildes_light(swt,qt[1],qt[2],qt[3]) 
+        V = vertex_initial(swt,qt[1],qt[2],qt[3]) 
         Ṽ_list[:,:,:,:,:,:,qi]  = V
     end
     return Ṽ_list, W11s, W12s, W21s, W22s, energies_list
 end
 
-
-q1 = [0.34,0.45,0.56]
-q2 = [-0.87,-0.23,0.78]
-q3 = [0.98,-0.565,0.122]
-Ṽ_list, W11s_1, W12s_1, W21s_1, W22s_1, energies_list = Vns_precalc(swt,q1,q2,q3)
-W11s_1[:,:,1] 
-conj.(W22s_1[:,:,4])
-
-q = path.qs[345]
-
-D = Sunny.dynamical_matrix(swt,q)
-A = diagm(vcat(ones(8),-ones(8)))
-values,vectors  = eigen(A*D )
-
-vectors[1:8,1:8] 
-
-conj(vectors[9:16,9:16]) 
-
-energies, T = excitations(swt,q)
-
-energies
-extrema(abs.(c[:]))
-q=[0.34,0.657,0.54565]
-
-energies1, T1 = excitations(swt,-q)
-energies2, T2 = excitations(swt,q)
-
-W11 = T1[1:8,1:8]
-W22 = conj(T2[9:16,9:16])
-
-W11-W22
-
-function Vns_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped3)
+function vertex_diag_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s)
        (; sys, data) = swt
         Na = Sunny.natoms(sys.crystal)
         N = sys.Ns[1]
@@ -179,15 +147,15 @@ function Vns_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshape
     return V1out
 end
 
-function Vns_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped3)
+function vertex_diag_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s)
        (; sys, data) = swt
         Na = Sunny.natoms(sys.crystal)
         N = sys.Ns[1]
-        M = N
+        M = 1
         Nf = Na*(N-1)
         V2out = zeros(ComplexF64,Nf,Nf,Nf)
         v1 = Ṽ_list[:,:,:,:,:,:,1]
-        v6 = Ṽ_list[:,:,:,:,:,:,6]
+        v5 = Ṽ_list[:,:,:,:,:,:,5]
        for α1 ∈ 1:Na, α2 ∈ 1:Na, α3 ∈ 1:Na 
         for σ1 ∈ 1:N-1, σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
             ind1 = idx(α1, σ1, N)
@@ -195,83 +163,113 @@ function Vns_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshape
             ind3 = idx(α3, σ3, N)
             for n1 ∈ 1:Nf, n2 ∈ 1:Nf, n3  ∈ 1:Nf
                 V2out[n1,n2,n3] +=  v1[α1, α2, α3,σ1, σ2, σ3] * W22s[ind1,n1,1] * W12s[ind2,n2,2] * W12s[ind3,n3,3]
-                                        +conj(v6[α1, α2, α3,σ1, σ2, σ3]) * conj(W21s[ind1,n3,6]) * conj(W11s[ind2,n2,5]) * conj(W12s[ind3,n1,4])  
+                                        +conj(v5[α1, α2, α3,σ1, σ2, σ3]) * conj(W21s[ind1,n3,6]) * conj(W11s[ind2,n2,5]) * conj(W11s[ind3,n1,4])  
             end
         end
     end
     return V2out
 end
 
-function VS_light(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+function vertex_diag(swt::SpinWaveTheory,q1,q2,q3)
     (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
-    M = N
+    M = 1
     Nf = Na*(N-1)
-    qs = [q_reshaped1,q_reshaped2,q_reshaped3]
+    qs = [q1,q2,q3]
 
-    qs_1 =  [qs[p] for p in PERMUTATIONS1]
-    qs_2 =  [qs[p] for p in PERMUTATIONS2]
-
-    Ṽ_list, W11s, W12s, W21s, W22s, Hs = Vns_precalc(swt,q_reshaped,q_reshaped2,q_reshaped3)
+    Ṽ_list, W11s, W12s, W21s, W22s, Hs = vertex_diag_precalc(swt,q1,q2,q3)
     VS1 = zeros(ComplexF64,Nf,Nf,Nf)
     VS2 = zeros(ComplexF64,Nf,Nf,Nf)
     for (pi,perm) ∈ enumerate(PERMUTATIONS1)
         q1, q2, q3 = qs[perm]
-        V1 = Vns_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped3)
+        V1 = vertex_diag_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s)
         VS1+= permutedims(V1,perm)
     end
         for (pi,perm) ∈ enumerate(PERMUTATIONS2)
         q1, q2, q3 = qs[perm]
-        V2 = Vns_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s,q_reshaped1,q_reshaped2,q_reshaped3)
+        V2 = vertex_diag_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s)
         VS2+= permutedims(V2,perm)
     end
     return VS1, VS2, Hs
 
 end
 
-Ṽ_list, W11s, W12s, W21s, W22s, energies = Vns_precalc(swt,q_reshaped,q_reshaped,q_reshaped)
-@time VS1,VS2, energies = VS_light(swt,q_reshaped,q_reshaped,q_reshaped)
 
-path = q_space_path(cryst,[[0,0,0],[1,0,0]],10)
-ωs = 0:0.1:1
-function self_energies(swt::SpinWaveTheory,q_reshaped;dq = 0.2,ϵ=0.05)
+function self_energy(swt::SpinWaveTheory,q;dq = 0.2,ϵ=0.05)
      (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
-    M = N
+    M = 1
     Nf = Na*(N-1)
     ks = Sunny.make_q_grid(sys, dq)
     Σa = zeros(ComplexF64,Nf)
     Σb = zeros(ComplexF64,Nf) 
     for (ki,k) ∈ enumerate(ks)
-        VS1, VS2 = VS_light(swt,-q_reshaped,k,q_reshaped-k)
+        VS1, VS2, energies = vertex_diag(swt,-q,k,q-k)
         for n1 ∈ 1:Nf, n2 ∈ 1:Nf, n3 ∈ 1:Nf
-            Σa[n1] +=  ((VS1[n1,n2,n3]*conj(VS1[n1,n2,n3]))^2)/(energies[n1,1]-energies[n2,2]-energies[n3,3]+im*ϵ)
-            Σb[n1] +=  ((VS2[n1,n2,n3]*conj(VS2[n1,n2,n3]))^2)/(energies[n1,1]+energies[n2,2]+energies[n3,3]-im*ϵ)
+            Σa[n1] +=  ((VS1[n1,n2,n3]*conj(VS1[n1,n2,n3]))^2)/(energies[n1,4]-energies[n2,2]-energies[n3,3]+im*ϵ) # 4 because -q is q1 so +q = 4
+            Σb[n1] +=  ((VS2[n1,n2,n3]*conj(VS2[n1,n2,n3]))^2)/(energies[n1,4]+energies[n2,2]+energies[n3,3]-im*ϵ)
         end
     end
-    return 0.5Σa/length(ks),-0.5Σb/length(ks)
+    Σa_sum, Σb_sum = 0.5Σa/length(ks),-0.5Σb/length(ks)
+    Σ = diagm(vcat(Σa_sum + Σb_sum,Σa_sum + Σb_sum))
+    return Σ
 end
 
 function interacting_greens_function(ωs, swt::SpinWaveTheory, qpts;ϵ=0.01,dq = 0.5)
+    (; sys, data) = swt
     qpts = convert(Sunny.AbstractQPoints, qpts)
+    Na = Sunny.natoms(sys.crystal)
+    N = sys.Ns[1]
+    M = 1
+    Nf = Na*(N-1)
+    ks = Sunny.make_q_grid(sys, dq)
     G = zeros(ComplexF64,length(qpts.qs),length(ωs),2Nf,2Nf)
     for (iω,ω) ∈ enumerate(ωs)
         @Threads.threads for iq in 1:length(qpts.qs)
             q = qpts.qs[iq]
             G0 = non_interacting_greens_function(ω,swt,q;ϵ)
-            Σa, Σb = self_energies(swt,q;dq,ϵ)
-            Σ = diagm(vcat(Σa + Σb,Σa + Σb)) # is this ordered correctly?
+            Σ = self_energy(swt,q;dq,ϵ)
+            println("self energy")
+            println(diag(Σ))
             G[iq,iω,:,:] .= inv(inv(G0)-Σ)
         end
     end
     return G
 end
 
-path = q_space_path(cryst,[[0,0,0],[1,0,0]],20)
-ωs = range(0.,4.,20)
-G = interacting_greens_function(ωs, swt, path;ϵ=0.01,dq = 0.5)
+
+function greens_function_V2(ωs, swt::SpinWaveTheory, qpts;ϵ=0.01)
+    qpts = convert(Sunny.AbstractQPoints, qpts)
+    G = zeros(ComplexF64,length(qpts.qs),length(ωs),2Nf,2Nf)
+    for (iω,ω) ∈ enumerate(ωs)
+        @Threads.threads for iq in 1:length(qpts.qs)
+            q = qpts.qs[iq]
+            G0 = non_interacting_greens_function(ω,swt,q;ϵ)
+            G[iq,iω,:,:] .= G0
+            self_energy(swt,q;dq,ϵ)
+        end
+    end
+    return G
+end
+
+
+
+path = q_space_path(cryst,[[0,0,0],[0.5,0,0]],10)
+ωs = range(3.,5.,10)
+Ga = interacting_greens_function(ωs, swt, path;ϵ=0.1,dq = 0.5)
+sqw = zeros(Float64,length(path.qs),length(ωs))
+for iq ∈ 1:length(path.qs)
+    for iω ∈ 1:length(ωs)
+        sqw[iq,iω] = imag.(tr(Ga[iq,iω,:,:]))
+    end
+end
+heatmap(range(0,1,40),ωs,sqw)
+
+path = q_space_path(cryst,[[0,0,0],[1,0,0]],50)
+ωs = range(0.,6,100)
+G = greens_function_V2(ωs, swt::SpinWaveTheory, path;ϵ=0.1)
 sqw = zeros(Float64,length(path.qs),length(ωs))
 for iq ∈ 1:length(path.qs)
     for iω ∈ 1:length(ωs)
@@ -280,19 +278,34 @@ for iq ∈ 1:length(path.qs)
 end
 
 heatmap(sqw)
+Sigsa = []
+Sigsb = []
 
-V = Vtildes(swt,q_reshaped,q_reshaped,q_reshaped)
-V[(1,2,3)][1,1,1,1,1,1]
+dqs = [0.5,0.25,0.2]
+for dq in dqs 
+    Siga, Sigb = self_energies(swt,rand(3);dq,ϵ=0.05)
+    push!(Sigsa,Siga)
+    push!(Sigsb,Sigb)
+    println("dq = $dq done")
+end
 
-Vs = [V[(1,2,3)],V[(1,2,3)],V[(1,2,3)]]
+val = [sum(norm.(Sigsa[n] .+ Sigsb[n])) for n ∈ 1:3]
+vs1,vs2, en = vertex_diag(swt,rand(3),rand(3),rand(3))
 
-Vs[1][1,1,1,1,1,1]
+extrema(norm.(vs1))
+extrema(norm.(vs2))
 
+begin
+    fig = Figure()
+    ax = fig[1,1]
+    plot()
+    fig
+end
 ######################################################################################################################################################
 ######################################################################################################################################################
 
 
-function Vns(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3,perm)
+function Vns_DEPRECATED(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3,perm)
     (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
@@ -353,7 +366,7 @@ function Vns(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3,perm)
 end
 
 
-function Vtildes(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+function Vtildes_DEPRECATED(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
     (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
@@ -409,7 +422,7 @@ end
 
 
 # Define a helper function to compute the contributions
-function add_to_Ṽ(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+function add_to_Ṽ_DEPRECATED(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
                    i, j, Ai, Bj, phase, Ṽ, M, N)
 
     α1, α2, α3 = α[perm123[1]], α[perm123[2]], α[perm123[3]]
@@ -427,7 +440,7 @@ function add_to_Ṽ(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}
     )
 end
 
-function add_to_Ṽ_onsite(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
+function add_to_Ṽ_onsite_DEPRECATED(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple{3,Int}, 
                    i, op, Ṽ, M, N)
     α1, α2, α3 = α[perm123[1]], α[perm123[2]], α[perm123[3]]
     σ1, σ2, σ3 = σ[perm123[1]], σ[perm123[2]], σ[perm123[3]]
@@ -436,7 +449,7 @@ function add_to_Ṽ_onsite(perm123::NTuple{3,Int}, α::NTuple{3,Int}, σ::NTuple
 end
 
 
-function Vns_light(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
+function Vns_light_DEPRECATED(swt::SpinWaveTheory,q_reshaped1,q_reshaped2,q_reshaped3)
     (; sys, data) = swt
     Na = Sunny.natoms(sys.crystal)
     N = sys.Ns[1]
