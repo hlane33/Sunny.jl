@@ -15,7 +15,7 @@ end
 #     return α + (N - 1) * (σ - 1)
 # end
 
-function idx(α, σ, N)
+@inline function idx(α, σ, N)
     return σ + (N - 1) * (α - 1)
 end
 
@@ -89,28 +89,30 @@ function vertex_diag_precalc(swt::SpinWaveTheory,q1,q2,q3)
     N = sys.Ns[1]
     M = 1
     Nf = Na*(N-1)
-    qs = [q1,q2,q3,-q1,-q2,-q3]
-    Ṽ_list = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1,length(qs))
+    qs = (q1,q2,q3,-q1,-q2,-q3)
+    Ṽ_list = zeros(ComplexF64, Na, Na, Na, N-1, N-1, N-1,6)
     # Ts = zeros(ComplexF64,2Nf,2Nf,length(qs))
-    energies_list = zeros(ComplexF64,2Nf,length(qs))
-    W11s = zeros(ComplexF64,Nf,Nf,length(qs))
-    W12s = zeros(ComplexF64,Nf,Nf,length(qs))
-    W21s = zeros(ComplexF64,Nf,Nf,length(qs))
-    W22s = zeros(ComplexF64,Nf,Nf,length(qs))
+    energies_list = zeros(ComplexF64,2Nf,6)
+    W11s = zeros(ComplexF64,Nf,Nf,6)
+    W12s = zeros(ComplexF64,Nf,Nf,6)
+    W21s = zeros(ComplexF64,Nf,Nf,6)
+    W22s = zeros(ComplexF64,Nf,Nf,6)
     for (qi,q) ∈ enumerate(qs)
         energies, T = excitations(swt,q)
+        @views begin
         W11s[:,:,qi] .= T[1:Nf,1:Nf]
         W21s[:,:,qi] .= T[(Nf+1):end,1:Nf]
         W12s[:,:,qi] .= T[1:Nf,(Nf+1):end]
         W22s[:,:,qi] .= T[(Nf+1):end,(Nf+1):end] #should be trivial but it seems like this is a little weird
         energies_list[:,qi] .= energies
         # Ts[:,:,qi] .= T
+        end
     end
-    qtriplets = [(q1,q2,q3),(q3,q2,q1),(q2,q1,q3),
-    (-q1,-q2,-q3),(-q3,-q2,-q1),(-q3,-q1,-q2)]
+    qtriplets = ((q1,q2,q3),(q3,q2,q1),(q2,q1,q3),
+    (-q1,-q2,-q3),(-q3,-q2,-q1),(-q3,-q1,-q2))
     for (qi,qt) in enumerate(qtriplets)
         V = vertex_initial(swt,qt[1],qt[2],qt[3]) 
-        Ṽ_list[:,:,:,:,:,:,qi]  = V
+        @views Ṽ_list[:,:,:,:,:,:,qi]  = V
     end
     return Ṽ_list, W11s, W12s, W21s, W22s, energies_list
 end
@@ -122,19 +124,19 @@ function vertex_diag_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s)
         M = N
         Nf = Na*(N-1)
         V1out = zeros(ComplexF64,Nf,Nf,Nf)
-        v1 = Ṽ_list[:,:,:,:,:,:,1]
-        v2 = Ṽ_list[:,:,:,:,:,:,2]
-        v3 = Ṽ_list[:,:,:,:,:,:,3]
-        v4 = Ṽ_list[:,:,:,:,:,:,4]
-        v5 = Ṽ_list[:,:,:,:,:,:,5]
-        v6 = Ṽ_list[:,:,:,:,:,:,6]
+        v1 = @view Ṽ_list[:,:,:,:,:,:,1]
+        v2 = @view Ṽ_list[:,:,:,:,:,:,2]
+        v3 = @view Ṽ_list[:,:,:,:,:,:,3]
+        v4 = @view Ṽ_list[:,:,:,:,:,:,4]
+        v5 = @view Ṽ_list[:,:,:,:,:,:,5]
+        v6 = @view Ṽ_list[:,:,:,:,:,:,6]
        for α1 ∈ 1:Na, α2 ∈ 1:Na, α3 ∈ 1:Na 
         for σ1 ∈ 1:N-1, σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
             ind1 = idx(α1, σ1, N)
             ind2 = idx(α2, σ2, N)
             ind3 = idx(α3, σ3, N)
             for n1 ∈ 1:Nf, n2 ∈ 1:Nf, n3  ∈ 1:Nf
-            V1out[n1,n2,n3] += v1[α1, α2, α3,σ1, σ2, σ3] * W22s[ind1,n1,1] * W11s[ind2,n2,2] * W11s[ind3,n3,3]  # Fix the 3 indices
+            V1out[n1,n2,n3] += v1[α1, α2, α3,σ1, σ2, σ3] * W12s[ind1,n1,1] * W11s[ind2,n2,2] * W11s[ind3,n3,3]  # Fix the 3 indices
                  +  v2[α1, α2, α3,σ1, σ2, σ3] * W21s[ind1,n3,3] * W11s[ind2,n2,2] * W12s[ind3,n1,1]
                  +  v3[α1, α2, α3,σ1, σ2, σ3] * W21s[ind1,n2,2] * W12s[ind2,n1,1] * W11s[ind3,n3,3]
                 
@@ -147,6 +149,7 @@ function vertex_diag_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s)
     return V1out
 end
 
+
 function vertex_diag_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s)
        (; sys, data) = swt
         Na = Sunny.natoms(sys.crystal)
@@ -154,8 +157,8 @@ function vertex_diag_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s)
         M = 1
         Nf = Na*(N-1)
         V2out = zeros(ComplexF64,Nf,Nf,Nf)
-        v1 = Ṽ_list[:,:,:,:,:,:,1]
-        v5 = Ṽ_list[:,:,:,:,:,:,5]
+        v1 =@view Ṽ_list[:,:,:,:,:,:,1]
+        v5 = @view Ṽ_list[:,:,:,:,:,:,5]
        for α1 ∈ 1:Na, α2 ∈ 1:Na, α3 ∈ 1:Na 
         for σ1 ∈ 1:N-1, σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
             ind1 = idx(α1, σ1, N)
@@ -169,6 +172,12 @@ function vertex_diag_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s)
     end
     return V2out
 end
+
+
+@time Ṽ_list, W11s, W12s, W21s, W22s, energies_list = vertex_diag_precalc(swt,rand(3),rand(3),rand(3))
+@time vertex_diag_extract1(swt,Ṽ_list, W11s, W12s, W21s, W22s)
+
+@time vertex_diag_extract2(swt,Ṽ_list, W11s, W12s, W21s, W22s)
 
 function vertex_diag(swt::SpinWaveTheory,q1,q2,q3)
     (; sys, data) = swt
@@ -208,8 +217,8 @@ function self_energy(swt::SpinWaveTheory,q;dq = 0.2,ϵ=0.05)
     for (ki,k) ∈ enumerate(ks)
         VS1, VS2, energies = vertex_diag(swt,-q,k,q-k)
         for n1 ∈ 1:Nf, n2 ∈ 1:Nf, n3 ∈ 1:Nf
-            Σa[n1] +=  ((VS1[n1,n2,n3]*conj(VS1[n1,n2,n3]))^2)/(energies[n1,4]-energies[n2,2]-energies[n3,3]+im*ϵ) # 4 because -q is q1 so +q = 4
-            Σb[n1] +=  ((VS2[n1,n2,n3]*conj(VS2[n1,n2,n3]))^2)/(energies[n1,4]+energies[n2,2]+energies[n3,3]-im*ϵ)
+            Σa[n1] +=  ((VS1[n1,n2,n3]*conj(VS1[n1,n2,n3])))/(energies[n1,4]-energies[n2,2]-energies[n3,3]+im*ϵ) # 4 because -q is q1 so +q = 4
+            Σb[n1] +=  ((VS2[n1,n2,n3]*conj(VS2[n1,n2,n3])))/(energies[n1,4]+energies[n2,2]+energies[n3,3]-im*ϵ)
         end
     end
     Σa_sum, Σb_sum = 0.5Σa/length(ks),-0.5Σb/length(ks)
@@ -231,8 +240,6 @@ function interacting_greens_function(ωs, swt::SpinWaveTheory, qpts;ϵ=0.01,dq =
             q = qpts.qs[iq]
             G0 = non_interacting_greens_function(ω,swt,q;ϵ)
             Σ = self_energy(swt,q;dq,ϵ)
-            println("self energy")
-            println(diag(Σ))
             G[iq,iω,:,:] .= inv(inv(G0)-Σ)
         end
     end
@@ -254,18 +261,30 @@ function greens_function_V2(ωs, swt::SpinWaveTheory, qpts;ϵ=0.01)
     return G
 end
 
+Ṽ_list, W11s, W12s, W21s, W22s, energies_list = vertex_diag_precalc(swt,rand(3),rand(3),rand(3))
+
+a=W21s[:,:,1]
+b=conj(W12s[:,:,4])
+
+W11s[:,:,1] 
 
 
-path = q_space_path(cryst,[[0,0,0],[0.5,0,0]],10)
-ωs = range(3.,5.,10)
-Ga = interacting_greens_function(ωs, swt, path;ϵ=0.1,dq = 0.5)
+
+path = q_space_path(cryst,[[0,0,0],[1.,0,0]],2)
+ωs = range(0.,1,2)
+Ga = @time interacting_greens_function(ωs, swt, path;ϵ=0.1,dq = 0.2)
+
+Profile.clear()
+@profile self_energy(swt, rand(3))
+ProfileView.view()
+
 sqw = zeros(Float64,length(path.qs),length(ωs))
 for iq ∈ 1:length(path.qs)
     for iω ∈ 1:length(ωs)
-        sqw[iq,iω] = imag.(tr(Ga[iq,iω,:,:]))
+        sqw[iq,iω] = -imag.(tr(Ga[iq,iω,:,:]))
     end
 end
-heatmap(range(0,1,40),ωs,sqw)
+heatmap(range(0,1,60),ωs,-sqw)
 
 path = q_space_path(cryst,[[0,0,0],[1,0,0]],50)
 ωs = range(0.,6,100)
