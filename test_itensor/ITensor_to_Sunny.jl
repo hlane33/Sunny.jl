@@ -79,7 +79,7 @@ function get_quantum_correlations(N_sites::Int, energies, sys; dt)
                            dt=dt, 
                            calculate_errors=false)
 
-    print("measure",measure)
+   
     
     return sc
 end
