@@ -2,6 +2,7 @@ using ITensors, ITensorMPS, GLMakie, Sunny, FFTW
 include("sunny_toITensor.jl")
 include("ITensor_to_Sunny.jl")
 include("MeasuredCorrelations.jl")
+include("overloaded_intensities.jl")
 
 
 
@@ -97,15 +98,15 @@ function Get_Structure_factor()
 
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
-    energies = 0:0.05:5
-    qs = [[0,0,0], [2,0,0]]
+    energies = 0:0.02:5
+    qs = [[0,0,0], [1,0,0]]
     positions = 1:N
 
    
    
     # Using SampledCorrelations Augmentation (INTEGRATED WAY)
     # Compute structure factor
-
+     """
     
     sc = Get_StructureFactor_with_Sunny(G, energies, sys, η, ts)
 
@@ -141,7 +142,7 @@ function Get_Structure_factor()
 
     
     return fig
-    """
+   
 
     
     
