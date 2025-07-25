@@ -42,7 +42,7 @@ energies = 0:0.05:5
 qs = [[0,0,0], [1,0,0]]
 cryst = sys.crystal
 path = q_space_path(cryst, qs, 401)
-res = intensities(swt, path; energies, kernel =gaussian(fwhm=0.25))
+res = Sunny.intensities(swt, path; energies, kernel =gaussian(fwhm=0.25))
 fig = plot_intensities(res; units, title="SWT AFM chain Sqw plot")
 display(fig)
 
