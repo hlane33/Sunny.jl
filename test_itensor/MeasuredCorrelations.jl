@@ -152,7 +152,7 @@ function QuantumCorrelations(G::Matrix{ComplexF64}, ts::Vector{Float64}, η::Flo
     end
     print("POsitions type:", typeof(positions))
     # Create the ssf_custom measure for Sz-Sz correlations
-    measure = ssf_custom((q, ssf) -> real(ssf[1]), sys; apply_g=false)  # Fixed indexing
+    measure = ssf_custom((q, ssf) -> real(ssf[3,3]), sys; apply_g=false)  # Fixed indexing
     
     # Compute frequencies - keep original order for processing
     dt = ts[2] - ts[1]
