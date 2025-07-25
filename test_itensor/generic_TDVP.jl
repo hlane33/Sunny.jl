@@ -72,7 +72,7 @@ function Get_Structure_factor()
     # Time evolution parameters
     η = 0.1
     tstep = 0.5
-    tmax = 3.0
+    tmax = 10.0
     cutoff = 1E-10
     maxdim = 300  
 
@@ -103,17 +103,17 @@ function Get_Structure_factor()
     positions = 1:N
 
    
-   
+  
     # Using SampledCorrelations Augmentation (INTEGRATED WAY)
     # Compute structure factor
-     """
+     
     
     sc = Get_StructureFactor_with_Sunny(G, energies, sys, η, ts)
 
     # Generate linearly spaced q-points
     cryst = sys.crystal
     path = q_space_path(cryst, qs, 401)
-    res = intensities(sc, path; energies, kT=nothing)
+    res = Sunny.intensities(sc, path; energies, kT=nothing)
 
     # 3. Plot
     fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain")
@@ -143,7 +143,7 @@ function Get_Structure_factor()
     
     return fig
    
-
+     """
     
     
     
