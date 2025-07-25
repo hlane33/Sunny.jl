@@ -80,7 +80,7 @@ function main()
     N = 15
     η = 0.1
     tstep = 0.5
-    tmax = 10.0
+    tmax = 5.0
     cutoff = 1E-10
     maxdim = 300  # For TDVP evolution
 
@@ -118,13 +118,33 @@ function main()
     # Plotting
     fig = Figure()
     ax = Axis(fig[1, 1],
-              xlabel = "qₓ",
-              xticks = ([0, allowed_qs[end]], ["0", "2π"]),
-              ylabel = "Energy (meV)",
-              title = "S=1/2 AFM DMRG/TDVP for Chain lattice")
-    Makie.heatmap!(ax, allowed_qs, energies, out,
-             colorrange = (0, 0.5 * maximum(out)))
+            xlabel = "qₓ",
+            xticks = ([0, allowed_qs[end]], ["0", "2π"]),
+            ylabel = "Energy (meV)",
+            title = "S=1/2 AFM DMRG/TDVP for Chain lattice")
+
+    # Create heatmap with controlled color range
+    vmax = 0.5 * maximum(out)  # Set upper limit for better contrast
+    hm = heatmap!(ax, allowed_qs, energies, out,
+                colorrange = (0, vmax),
+                colormap = :viridis)  # :viridis is perceptually uniform
+
+    # Add colorbar with clear labeling
+    cbar = Colorbar(fig[1, 2], hm,
+                label = "Intensity (a.u.)",
+                vertical = true,
+                ticks = LinearTicks(5),
+                flipaxis = false)
+
+    # Indicate clipped values in colorbar (optional)
+    cbar.limits = (0, vmax)  # Explicitly show the range
+    cbar.highclip = :red      # Color for values > vmax
+    cbar.lowclip = :blue      # Color for values < 0 (if needed)
+
+    # Set axis limits
     ylims!(ax, 0, 5)
+
+
     return fig
 end
 
