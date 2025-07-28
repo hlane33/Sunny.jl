@@ -45,6 +45,64 @@ function add_Ṽ123_onsite( α::NTuple{3,Int}, σ::NTuple{3,Int},
     Ṽ[α1, α2, α3, σ1, σ2, σ3] += 1/(2√(M))*op[N,σ3]* δ(α1,i)* δ(α2,i)* δ(α3,i)*δ(σ1,σ2)
 end
 
+function get_realspace_vertices!(swt::SpinWaveTheory,V31p,V31m,V32p,V32m,Von)
+    (; sys, data) = swt
+    Na = Sunny.natoms(sys.crystal)
+    N = sys.Ns[1]
+    M = 1
+    V31p .= 0
+    V31m .= 0
+    V32p .= 0
+    V32m .= 0
+    Von .= 0
+    for (i, int) in enumerate(sys.interactions_union)
+        for coupling in int.pair
+            (; isculled, bond) = coupling
+            isculled && break
+            j = bond.j
+            for (Ai, Bj) in coupling.general.data 
+                for σ1 ∈ 1:N-1
+                    V31p[σ1] += -0.5Ai[N,N] * Bj[N,σ1]
+                    V31m[σ2] += -0.5Bj[N,N] * Ai[N,σ1]
+                    for σ2 ∈ 1:N-1, σ3 ∈ 1:N-1
+                        V32p[σ1,σ2,σ3] += Ai[N,σ1]* (Bj[σ2,σ3]-δ(σ2,σ3)*Bj[N,N]) 
+                        V32m[σ1,σ2,σ3] += Bj[N,σ1]* (Ai[σ2,σ3]-δ(σ2,σ3)*Ai[N,N])    
+                    end
+                end
+            end
+            # op = int.onsite
+            # for σ ∈ 1:N-1
+            #     Von[σ] += op[N,σ]
+            # end
+        end
+    end
+end
+
+
+function get_cubic_vertices!(swt,q1,q2,q3,W,Es,V31p,V31m,V32p,V32m,Von)
+    qs = (q1,a2,q3,-q1,-q2,-q3)
+    for (qi,q) ∈ enumerate(qs)
+        excitations!(view(W[:,:,qi]),view(Es[:,qi]),swt, q)
+    end
+    for (i,int) in enumerate(sys.interactions_union)
+        for coupling in int.pair
+            (; isculled, bond) = coupling
+            isculled && break
+            j = bond.j
+            phase3 = exp(2π*im * dot(q3, bond.n)) # Phase associated with periodic wrapping
+            V[j,j,j,σ1,σ1,σ3] += V31_p[σ3]
+            V[i,i,i,σ1,σ1,σ3] += V31_n[σ3]
+            V[j,j,i,σ1,σ1,σ3] += V32_p[σ3,σ1,σ2]*conj(phase3)
+            V[i,i,j,σ1,σ1,σ3] += V32_m[σ3,σ1,σ2]*phase3
+
+        end
+        op = int.onsite
+        for σ ∈ 1:N-1
+            V[i,i,i,σ1,σ2,σ3] += 0.5op[N,σ3] 
+        end
+    end
+
+end
 
 function vertex_initial(swt::SpinWaveTheory,q1,q2,q3)
     (; sys, data) = swt
