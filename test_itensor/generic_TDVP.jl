@@ -1,8 +1,12 @@
-using ITensors, ITensorMPS, GLMakie, Sunny, FFTW
+using ITensors, ITensorMPS, GLMakie, FFTW
+using Sunny
+
+#Decide where you want these to actually be included
 include("sunny_toITensor.jl")
 include("ITensor_to_Sunny.jl")
 include("MeasuredCorrelations.jl")
 include("overloaded_intensities.jl")
+include("CorrelationMeasuring.jl")
 
 
 
@@ -71,8 +75,8 @@ function Get_Structure_factor()
     N = 15
     # Time evolution parameters
     η = 0.1
-    tstep = 0.5
-    tmax = 10.0
+    tstep = 0.2
+    tmax = 20.0
     cutoff = 1E-10
     maxdim = 300  
 
@@ -93,57 +97,42 @@ function Get_Structure_factor()
 
     # Prepare time evolution
     ts = 0.0:tstep:tmax
+    N_timesteps = size(ts,1)
     c = div(N, 2)
     ϕ = apply_op(ψ, "Sz", sites, c)  # Excited state
 
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
-    energies = 0:0.02:5
+    energies = range(0, 5, N_timesteps) #No. Energies has to match N timesteps so that data sizing for 
+    plot_energies = range(0, 5, 500) #increases resolution? - see prefactors_for_phase_averaging()
+
+    integrated = false #decides which method to do
+
+    if integrated
+        # Using SampledCorrelations Augmentation (INTEGRATED WAY)
+        qc = Get_StructureFactor_with_Sunny(G, energies, sys)
+    else
+        # UNINTEGRATED WAY
+        qc = QuantumCorrelations(sys; 
+                            measure = ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
+                            energies=energies)
+
+        add_sample!(qc,G)
+    end
+
+    # Generate linearly spaced q-points
+    cryst = sys.crystal
     qs = [[0,0,0], [1,0,0]]
-    positions = 1:N
-
-   
-  
-    # Using SampledCorrelations Augmentation (INTEGRATED WAY)
-    # Compute structure factor
-     
-    
-    sc = Get_StructureFactor_with_Sunny(G, energies, sys, η, ts)
-
-    # Generate linearly spaced q-points
-    cryst = sys.crystal
     path = q_space_path(cryst, qs, 401)
-    res = Sunny.intensities(sc, path; energies, kT=nothing)
+    res = intensities(qc, path; energies = plot_energies, kT=nothing)
+    #Julia not distinguishing between overloaded functions properly?!
 
     # 3. Plot
-    fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain")
-
-    return fig
-
-    """
-
-    # UNINTEGRATED WAY
-    # Example usage (pseudocode)
-
-    
-    time_points = collect(ts)
-
-    # 2. Create the QuantumCorrelations object
-    qc = QuantumCorrelations(G, time_points, η, 
-                            sys)
-
-    # Generate linearly spaced q-points
-    cryst = sys.crystal
-    path = q_space_path(cryst, qs, 401)
-    res = intensities(qc, path; energies, kT=nothing)
-
-    # 3. Plot
-    fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain")
-
+    fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain", saturation=0.5)
     
     return fig
    
-     """
+
     
     
     
