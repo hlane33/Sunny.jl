@@ -32,14 +32,14 @@ latvecs = lattice_vectors(a, 10*a, 10*a, 90, 90, 90)
 crystal = Crystal(latvecs, [[0, 0, 0]])  # 1 spin per unit cell
 
 # System with AFM-compatible supercell
-sys = System(crystal, [1 => Moment(; s=1/2, g=2)], :dipole; dims=(2, 1, 1))
+sys = System(crystal, [1 => Moment(; s=1/2, g=2)], :SUN; dims=(5, 1, 1))
 
 # AFM exchange coupling (J1 > 0)
 J1 = 1.0  # meV
 set_exchange!(sys, J1, Bond(1, 1, [1, 0, 0]))  # Nearest-neighbor AFM
 
 # Repeat supercell to desired length (e.g., 20 spins = 10 supercells)
-Lx = 10  # Number of unit cells (each with 2 spins)
+Lx = 5  # Number of unit cells (each with 2 spins)
 repeat_periodically(sys, (Lx, 1, 1))  # Now has 20 spins
 
 
@@ -109,24 +109,18 @@ langevin.dt = 0.040;
 # [`FormFactor`](@ref) appropriate to Fe²⁺. 
 
 dt = 2*langevin.dt
-energies = range(0, 5, 500)
+energies = range(0, 5, 2)
 sc = SampledCorrelations(sys; dt, energies, measure=ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false))
 
 # The function [`add_sample!`](@ref) will collect data by running a dynamical
 # trajectory starting from the current system configuration. 
 
-add_sample!(sc, sys)
+Sunny.add_sample!(sc, sys)
 
 # To collect additional data, it is required to re-sample the spin configuration
 # from the thermal distribution. Statistical error is reduced by fully
 # decorrelating the spin configurations between calls to `add_sample!`.
 
-for _ in 1:300
-    for _ in 1:1000               # Enough steps to decorrelate spins
-        step!(sys, langevin)
-    end
-    add_sample!(sc, sys)
-end
 
 # Perform an intensity calculation for two special ``𝐪``-points in reciprocal
 # lattice units (RLU). A classical-to-quantum rescaling of normal mode
@@ -136,7 +130,7 @@ end
 qs = [[0,0,0], [1,0,0]]
 cryst = sys.crystal
 path = q_space_path(cryst, qs, 401)
-res = Sunny.intensities(sc, path; energies, kT = Langevin.kT  )
+res = Sunny.intensities(sc, path; energies, kT = langevin.kT  )
 fig = plot_intensities(res; units, title="LLD AFM chain Sqw plot")
 display(fig)
 
