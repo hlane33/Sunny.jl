@@ -72,11 +72,11 @@ end
 function Get_Structure_factor()
     units = Units(:meV, :angstrom)
     # Lattice configuration
-    N = 15
+    N = 20
     # Time evolution parameters
     η = 0.1
-    tstep = 0.2
-    tmax = 20.0
+    tstep = 0.5
+    tmax = 5.0
     cutoff = 1E-10
     maxdim = 300  
 
@@ -104,9 +104,7 @@ function Get_Structure_factor()
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
     energies = range(0, 5, N_timesteps) #No. Energies has to match N timesteps so that data sizing for 
-    plot_energies = range(0, 5, 500) #increases resolution? - see prefactors_for_phase_averaging()
-
-    integrated = false #decides which method to do
+    integrated = true #decides which method to do
 
     if integrated
         # Using SampledCorrelations Augmentation (INTEGRATED WAY)
@@ -124,7 +122,7 @@ function Get_Structure_factor()
     cryst = sys.crystal
     qs = [[0,0,0], [1,0,0]]
     path = q_space_path(cryst, qs, 401)
-    res = intensities(qc, path; energies = plot_energies, kT=nothing)
+    res = Sunny.intensities(qc, path; energies = :available, kT=nothing)
     #Julia not distinguishing between overloaded functions properly?!
 
     # 3. Plot
