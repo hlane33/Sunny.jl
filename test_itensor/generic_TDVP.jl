@@ -128,15 +128,17 @@ function Get_Structure_factor()
         if manual_plot
             # Extract G for a specific observable and other fixed indices
             obs_idx = 3  # or whichever observable you want
+            corr_idx =1
             # Assuming sys.dims = (Lx, Ly, ...) and you want to fix other spatial dimensions
             y_idx = 1    # fix y-coordinate if 2D/3D system
             z_idx = 1    # fix z-coordinate if 3D system  
             pos_idx = 1  # fix npos dimension
 
             # Extract the 2D slice: G[site, time]
-            G_slice = G = qc.data[obs_idx, 1, 1, :, y_idx, z_idx, :]   # Shape: (Lx, n_all_ω)
+            data_slice = qc.data[corr_idx, 1, 1, :, y_idx, z_idx, :]   # Shape: (Lx, n_all_ω)
+            buf_slice = G[obs_idx, :, y_idx, z_idx, pos_idx, :]  # Shape: (Lx, n_all_ω)
             allowed_qs = 0:(1/N):2π
-            out = real(G_slice) #compute_S(new_allowed_qs, energies, G_slice, positions, c, ts)
+            out = abs2.(buf_slice) #compute_S(new_allowed_qs, energies, G_slice, positions, c, ts)
 
             # Plotting
             fig = Figure()
