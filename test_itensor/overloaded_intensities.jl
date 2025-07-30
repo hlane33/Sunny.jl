@@ -1,5 +1,5 @@
 using StaticArrays: SVector
-using Sunny: available_energies, contains_dynamic_correlations, pruned_wave_vector_info,
+import Sunny: available_energies, contains_dynamic_correlations, pruned_wave_vector_info,
 intensities, Intensities, AbstractQPoints, prefactors_for_phase_averaging
 
 # Key compatibility functions for Sunny's intensities interface
