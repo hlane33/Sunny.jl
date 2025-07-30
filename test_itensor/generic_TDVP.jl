@@ -75,8 +75,8 @@ function Get_Structure_factor()
     N = 20
     # Time evolution parameters
     η = 0.1
-    tstep = 0.5
-    tmax = 3.0
+    tstep = 0.2
+    tmax = 10.0
     cutoff = 1E-10
     maxdim = 300  
 
@@ -123,7 +123,7 @@ function Get_Structure_factor()
                             measure = ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
                             energies=energies)
 
-        add_sample!(qc,G)
+        prefft_buf = add_sample!(qc,G)
         manual_plot = true # Set to true to plot manually
         if manual_plot
             # Extract G for a specific observable and other fixed indices
@@ -136,9 +136,9 @@ function Get_Structure_factor()
 
             # Extract the 2D slice: G[site, time]
             data_slice = qc.data[corr_idx, 1, 1, :, y_idx, z_idx, :]   # Shape: (Lx, n_all_ω)
-            buf_slice = G[obs_idx, :, y_idx, z_idx, pos_idx, :]  # Shape: (Lx, n_all_ω)
+            buf_slice = prefft_buf[obs_idx, :, y_idx, z_idx, pos_idx, :]  # Shape: (Lx, n_all_ω)
             allowed_qs = 0:(1/N):2π
-            out = abs2.(buf_slice) #compute_S(new_allowed_qs, energies, G_slice, positions, c, ts)
+            out = compute_S(new_allowed_qs, energies, buf_slice, positions, c, ts) #real(data_slice) # compute_S(new_allowed_qs, energies, G, positions, c, ts)
 
             # Plotting
             fig = Figure()

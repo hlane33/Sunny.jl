@@ -60,8 +60,12 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
     
     # Load trajectory data
     get_trajectory_from_G!(samplebuf, G, nsnaps, observables, atom_idcs)
-    
-    return samplebuf
+
+    prefft_buf = copy(samplebuf)
+    println("Original: ", pointer(samplebuf))
+    println("Copy: ", pointer(prefft_buf))
+
+    return prefft_buf
 end
 
 function accum_sample!(qc::QuantumCorrelations; window)
@@ -140,12 +144,12 @@ end
 
 function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}; window=:cosine)
     # Step 1: Replace new_sample! with quantum data injection
-    samplebuf = new_sample!(qc, G)
+    prefft_buf = new_sample!(qc, G)
     
     # Step 2: Use Sunny's existing accum_sample! 
     accum_sample!(qc; window)
     
     println("Quantum TDVP data processed through Sunny's infrastructure")
 
-    return samplebuf # Return the updated sample buffer but before FFTS
+    return prefft_buf # Return the updated sample buffer but before FFTS
 end
