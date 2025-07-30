@@ -24,7 +24,6 @@ function load_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
     Uses the exact same pattern as the original observable_values! function.
     """
 
-    print("INdex Observables", CartesianIndices(observables))
     for idx in CartesianIndices(observables)
         
         obs_idx, la, lb, lc, pos = idx.I
@@ -35,10 +34,11 @@ function load_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
         if obs_idx == 3 && atom <= size(G, 1) #currently fixed because sz at 3 in observables to match TDVP
              #site should match site numbering done for TDVP, currently crude for 1D but should use code from Sunny to Itensor
              # G doesn't currently "know" what observables the code contains.
-            buf[idx, t_idx] = G[site, t_idx]
+            buf[idx] = G[site, t_idx]
+            
 
         else
-            buf[idx, t_idx] = 0.0
+            buf[idx] = 0.0
         end
         
     end
@@ -55,7 +55,7 @@ function load_trajectory_from_G!(buf, G, nsnaps, observables, atom_idcs)
     
     # Load each time snapshot
     for t_idx in 1:nsnaps
-        load_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
+        load_observables_from_G!(@view(buf[:,:,:,:,:,t_idx]), G, t_idx, observables, atom_idcs)
     end
     
     return nothing
