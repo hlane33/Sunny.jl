@@ -71,6 +71,24 @@ function compute_S(qs, ωs, G, positions, c, ts)
     return out
 end
 
+function compute_S_low_res(G, positions, c, ts)
+    out = zeros(Float64, length(positions), length(ts))
+    
+    for (qi, q_pos) ∈ enumerate(positions)
+        for (ωi, ω_t) ∈ enumerate(ts)
+            sum_val = 0.0
+            for xi ∈ 1:length(positions), ti ∈ 1:length(ts)
+                val = cos(q_pos * (positions[xi] - c)) *
+                      (cos(ω_t * ts[ti]) * real(G[xi, ti]) -
+                       sin(ω_t * ts[ti]) * imag(G[xi, ti]))
+                sum_val += val
+            end
+            out[qi, ωi] = sum_val
+        end
+    end
+    return out
+end
+
 ################
 # Main Program #
 ################
@@ -80,7 +98,7 @@ function main()
     N = 15
     η = 0.1
     tstep = 0.5
-    tmax = 5.0
+    tmax = 10.0
     cutoff = 1E-10
     maxdim = 300  # For TDVP evolution
 
@@ -92,7 +110,7 @@ function main()
         (0.0,)                 # noise
     )
 
-    sys = create_chain_system(20; periodic_bc = true)
+    sys = create_chain_system(20; periodic_bc = false)
     DMRG_results = calculate_ground_state(sys)
     ψ = DMRG_results.psi
     H = DMRG_results.H
@@ -106,7 +124,7 @@ function main()
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
 
-    print(G)
+    print("correlations", G)
 
 
     # Compute structure factor
@@ -114,6 +132,7 @@ function main()
     allowed_qs = 0:(1/N):2π
     positions = 1:N
     out = compute_S(allowed_qs, energies, G, positions, c, ts)
+    print("structure factor output: ", out)
 
     # Plotting
     fig = Figure()
