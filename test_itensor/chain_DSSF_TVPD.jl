@@ -60,7 +60,7 @@ function compute_S(qs, ωs, G, positions, c, ts)
         for (ωi, ω) ∈ enumerate(ωs)
             sum_val = 0.0
             for xi ∈ 1:length(positions), ti ∈ 1:length(ts)
-                val = cos(q * (positions[xi] - c)) * 
+                val = cos(q * (positions[xi]-c)) * 
                       (cos(ω * ts[ti]) * real(G[xi, ti]) - 
                        sin(ω * ts[ti]) * imag(G[xi, ti]))
                 sum_val += val
@@ -71,23 +71,6 @@ function compute_S(qs, ωs, G, positions, c, ts)
     return out
 end
 
-function compute_S_low_res(G, positions, c, ts)
-    out = zeros(Float64, length(positions), length(ts))
-    
-    for (qi, q_pos) ∈ enumerate(positions)
-        for (ωi, ω_t) ∈ enumerate(ts)
-            sum_val = 0.0
-            for xi ∈ 1:length(positions), ti ∈ 1:length(ts)
-                val = cos(q_pos * (positions[xi] - c)) *
-                      (cos(ω_t * ts[ti]) * real(G[xi, ti]) -
-                       sin(ω_t * ts[ti]) * imag(G[xi, ti]))
-                sum_val += val
-            end
-            out[qi, ωi] = sum_val
-        end
-    end
-    return out
-end
 
 ################
 # Main Program #
@@ -95,9 +78,9 @@ end
 
 function main()
     # Parameters
-    N = 15
+    N = 15 #Number of sites
     η = 0.1
-    tstep = 0.5
+    tstep = 0.2
     tmax = 10.0
     cutoff = 1E-10
     maxdim = 300  # For TDVP evolution
@@ -110,7 +93,7 @@ function main()
         (0.0,)                 # noise
     )
 
-    sys = create_chain_system(20; periodic_bc = false)
+    sys = create_chain_system(N; periodic_bc = false)
     DMRG_results = calculate_ground_state(sys)
     ψ = DMRG_results.psi
     H = DMRG_results.H
@@ -118,6 +101,7 @@ function main()
 
     # Prepare time evolution
     ts = 0.0:tstep:tmax
+    N_timesteps = size(ts,1)
     c = div(N, 2)
     ϕ = apply_op(ψ, "Sz", sites, c)  # Excited state
 
@@ -128,10 +112,12 @@ function main()
 
 
     # Compute structure factor
-    energies = 0:0.05:5
+    energies = range(0, 5,N_timesteps)
     allowed_qs = 0:(1/N):2π
+    new_allowed_qs = (2π/N) * (0:(N-1))  # [0, 2π/N, 4π/N, ..., 2π(N-1)/N] - should match sunny_to_itensor?
     positions = 1:N
-    out = compute_S(allowed_qs, energies, G, positions, c, ts)
+    out = compute_S(new_allowed_qs, energies, G, positions, c, ts)
+    intensity = abs2.(out)
     print("structure factor output: ", out)
 
     # Plotting
@@ -143,7 +129,7 @@ function main()
             title = "S=1/2 AFM DMRG/TDVP for Chain lattice")
 
     # Create heatmap with controlled color range
-    vmax = 0.5 * maximum(out)  # Set upper limit for better contrast
+    vmax = 0.4 * maximum(out)  # Set upper limit for better contrast
     hm = heatmap!(ax, allowed_qs, energies, out,
                 colorrange = (0, vmax),
                 colormap = :viridis)  # :viridis is perceptually uniform

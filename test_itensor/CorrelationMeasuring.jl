@@ -19,10 +19,10 @@ function get_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
         if obs_idx == 3 && atom <= size(G, 1) #currently fixed because sz at 3 in observables to match TDVP
              #site should match site numbering done for TDVP, currently crude for 1D but should use code from Sunny to Itensor
              # G doesn't currently "know" what observables the code contains.
-            buf[idx, t_idx] = G[site, t_idx]
+            buf[idx] = G[site, t_idx]
 
         else
-            buf[idx, t_idx] = 0.0
+            buf[idx] = 0.0
         end
         
     end
@@ -39,7 +39,7 @@ function get_trajectory_from_G!(buf, G, nsnaps, observables, atom_idcs)
     
     # Load each time snapshot
     for t_idx in 1:nsnaps
-        get_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
+        get_observables_from_G!(@view(buf[:,:,:,:,:,t_idx]), G, t_idx, observables, atom_idcs)
     end
     
     return nothing
@@ -61,7 +61,7 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
     # Load trajectory data
     get_trajectory_from_G!(samplebuf, G, nsnaps, observables, atom_idcs)
     
-    return nothing
+    return samplebuf
 end
 
 function accum_sample!(qc::QuantumCorrelations; window)
@@ -112,7 +112,7 @@ function accum_sample!(qc::QuantumCorrelations; window)
         # as well as the appropriate spacetime offsets of the correlation.
         @. corrbuf = conj(sample_α) * sample_β
         corr_ifft! * corrbuf
-        corrbuf ./= n_contrib
+        corrbuf ./= n_contrib #is this line necessary?
 
         @assert window in (:cosine, :rectangular)
         if window == :cosine
@@ -137,12 +137,15 @@ function accum_sample!(qc::QuantumCorrelations; window)
 end
 
 
+
 function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}; window=:cosine)
     # Step 1: Replace new_sample! with quantum data injection
-    new_sample!(qc, G)
+    samplebuf = new_sample!(qc, G)
     
     # Step 2: Use Sunny's existing accum_sample! 
     accum_sample!(qc; window)
     
     println("Quantum TDVP data processed through Sunny's infrastructure")
+
+    return samplebuf # Return the updated sample buffer but before FFTS
 end

@@ -201,9 +201,9 @@ end
 
 
 let
-    Nx = 6
-    Ny = 6
-    N_basis = 2  # Number of basis states per site (S=1/2)
+    Nx = 5
+    Ny = 5
+    N_basis = 1  # Number of basis states per site (S=1/2)
     N = Nx * Ny*N_basis
     yperiodic = true
     # Initialize the site degrees of freedom.
@@ -212,7 +212,7 @@ let
     # Use the AutoMPO feature to create the 
     # next-neighbor Heisenberg model.
     ops = OpSum()
-    lattice = honeycomb_lattice(Nx, Ny; yperiodic=yperiodic)
+    lattice = square_lattice(Nx, Ny; yperiodic=yperiodic)
     print(lattice)
     num_bonds = length(lattice)
     println("Number of bonds in the $Nx×$Ny lattice with yperiodic=$yperiodic: $num_bonds")

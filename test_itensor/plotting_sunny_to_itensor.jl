@@ -1,4 +1,32 @@
 #PLOTTING FUNCTIONS FOR sunny_toITensor - not currently required
+#breaks now due to removal of latticeConfig
+
+"""
+Classify bonds by their coupling strength and organize them.
+"""
+function organize_bonds_for_itensor(bond_pairs)
+    coupling_groups = Dict{Any, Vector{Tuple{Int,Int}}}()
+
+    for (i, j, coupling) in bond_pairs
+        # Use first diagonal element as the grouping key
+        coupling_key = coupling[1,1]
+        
+        if !haskey(coupling_groups, coupling_key)
+            coupling_groups[coupling_key] = Vector{Tuple{Int,Int}}()
+        end
+        push!(coupling_groups[coupling_key], (i, j))
+    end
+
+    # Sort by absolute value
+    sorted_couplings = sort(collect(keys(coupling_groups)), by=x -> x isa AbstractMatrix ? norm(x) : abs(x), rev=true)
+    
+    println("Found $(length(sorted_couplings)) different coupling strengths:")
+    for (idx, coupling) in enumerate(sorted_couplings)
+        println("  Group $idx: J = $coupling, $(length(coupling_groups[coupling])) bonds")
+    end
+    
+    return coupling_groups, sorted_couplings
+end
 
 """
 Generates site positions for plotting based on lattice type.
@@ -45,6 +73,8 @@ function get_site_positions(config::LatticeConfig, N_basis)
         error("Unsupported lattice type: $(config.lattice_type)")
     end
 end
+
+
 """
 CORRECTED plotting function for honeycomb lattice bonds.
 """
@@ -198,26 +228,4 @@ function plot_bonds_from_pairs!(ax, bond_pairs, sites, target_coupling, color, s
     
     println("Plotted $bonds_plotted bonds for coupling $target_coupling")
     return bonds_plotted
-end
-
-"""
-Analyze bond structure for any system.
-"""
-function analyze_bond_structure(bonds, couplings, sys::System)
-    println("\nBond Structure Analysis:")
-    println("System dimensions: $(sys.dims)")
-    println("Basis sites per unit cell: $(length(sys.crystal.positions))")
-    println("Total bonds: $(length(bonds))")
-    
-    for (coupling, bond_list) in couplings
-        println("  Coupling J = $coupling: $(length(bond_list)) bonds")
-        if length(bond_list) ≤ 10
-            for (i, j) in bond_list[1:min(5, length(bond_list))]
-                println("    ($i, $j)")
-            end
-            if length(bond_list) > 5
-                println("    ... and $(length(bond_list) - 5) more")
-            end
-        end
-    end
 end
