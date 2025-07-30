@@ -2,13 +2,13 @@
 
 
 
-function load_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
+function get_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
     """
     Load observables from precomputed TDVP trajectory G into buffer slice.
     Uses the exact same pattern as the original observable_values! function.
     """
 
-    print("INdex Observables", CartesianIndices(observables))
+    print("Observable Index", CartesianIndices(observables))
     for idx in CartesianIndices(observables)
         
         obs_idx, la, lb, lc, pos = idx.I
@@ -30,7 +30,7 @@ function load_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
     return nothing
 end
 
-function load_trajectory_from_G!(buf, G, nsnaps, observables, atom_idcs)
+function get_trajectory_from_G!(buf, G, nsnaps, observables, atom_idcs)
     """
     Load full trajectory from G into buffer.
     Mirrors the structure of trajectory! but loads precomputed data.
@@ -39,7 +39,7 @@ function load_trajectory_from_G!(buf, G, nsnaps, observables, atom_idcs)
     
     # Load each time snapshot
     for t_idx in 1:nsnaps
-        load_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
+        get_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
     end
     
     return nothing
@@ -59,7 +59,7 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
     samplebuf[:,:,:,:,:,(nsnaps+1):end] .= 0
     
     # Load trajectory data
-    load_trajectory_from_G!(samplebuf, G, nsnaps, observables, atom_idcs)
+    get_trajectory_from_G!(samplebuf, G, nsnaps, observables, atom_idcs)
     
     return nothing
 end
