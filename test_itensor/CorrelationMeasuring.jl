@@ -62,10 +62,63 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
     get_trajectory_from_G!(samplebuf, G, nsnaps, observables, atom_idcs)
 
     prefft_buf = copy(samplebuf)
-    println("Original: ", pointer(samplebuf))
+     println("Original: ", pointer(samplebuf))
     println("Copy: ", pointer(prefft_buf))
 
     return prefft_buf
+end
+
+function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
+    (; data, corr_pairs, samplebuf, corrbuf, space_fft!, time_fft!) = qc
+    npos = size(samplebuf)[5]
+    
+    # Direct FFT transforms without correlation computation
+    # Transform A(q) = ∑ exp(iqr) A(r).
+    # This is opposite to the FFTW convention, so we must conjugate
+    # the fft by a complex conjugation to get the correct sign.
+    samplebuf .= conj.(samplebuf)
+    space_fft! * samplebuf
+    samplebuf .= conj.(samplebuf)
+
+
+    # Transform A(ω) = ∑ exp(-iωt) A(t)
+    # Direct time FFT without zero-padding considerations
+    time_fft! * samplebuf
+    
+    count = qc.nsamples += 1
+    
+    # Direct assignment without correlation computation
+    for j in 1:npos, i in 1:npos, (c, (α, β)) in enumerate(corr_pairs)
+        # For equivalence to manual method, we need α = β (no cross-correlations)
+        if α != β
+            @warn "Manual method equivalent only works for autocorrelations (α = β)"
+        end
+        
+        # Extract transformed data - need to match manual method's 2D extraction
+        sample_data = @view samplebuf[α,:,:,:,i,:]  # 4D: [:, :, :, time]
+        databuf = @view data[c,i,j,:,:,:,:]         # 4D: [q, y, z, ω]
+        
+        # For equivalence to manual method, we need to extract the 2D slice
+        # that corresponds to out[q, ω] dimensions
+        # Assuming the spatial FFT puts q in first dimension and time FFT puts ω in last
+        y_idx = 1  # Fixed y coordinate (or first y if multiple)
+        z_idx = 1  # Fixed z coordinate (or first z if multiple)
+        
+        # Extract the 2D q-ω slice like manual method
+        transformed_2d = @view sample_data[:, y_idx, z_idx, :]  # 2D: [q, ω]
+        
+        
+        # Optional windowing in time/frequency domain
+        if window == :cosine
+            num_time_offsets = size(transformed_2d, 2)
+            window_func = cos.(range(0, π, length=num_time_offsets+1)[1:end-1]).^2
+            transformed_2d .*= reshape(window_func, 1, num_time_offsets)
+        end
+        
+        # Match manual assignment pattern: assign 2D to specific slice of 4D
+        q_size, ω_size = size(transformed_2d)
+        databuf[1:q_size, y_idx, z_idx, 1:ω_size] .= real.(transformed_2d)
+    end
 end
 
 function accum_sample!(qc::QuantumCorrelations; window)
@@ -101,8 +154,7 @@ function accum_sample!(qc::QuantumCorrelations; window)
     #$ @assert isodd(num_time_offsets)
     n_contrib[n_contrib .== 0] .= Inf
 
-    count = qc.nsamples += 1
-
+    count = sc.nsamples += 1
 
     for j in 1:npos, i in 1:npos, (c, (α, β)) in enumerate(corr_pairs)
         # α, β = ci.I
@@ -114,9 +166,9 @@ function accum_sample!(qc::QuantumCorrelations; window)
         # According to Sunny convention, the correlation is between
         # α† and β. This conjugation implements both the dagger on the α
         # as well as the appropriate spacetime offsets of the correlation.
-        @. corrbuf = conj(sample_α) * sample_β
+        @. corrbuf = sample_β
         corr_ifft! * corrbuf
-        corrbuf ./= n_contrib #is this line necessary?
+        corrbuf ./= n_contrib
 
         @assert window in (:cosine, :rectangular)
         if window == :cosine
@@ -125,7 +177,7 @@ function accum_sample!(qc::QuantumCorrelations; window)
             # length, Δt → T. This smooth windowing mitigates ringing artifacts
             # that appear when imposing periodicity on the real-space
             # trajectory. Note, however, that windowing also broadens the signal
-            # S(ω) on the characteristic qcale of one frequency bin Δω = 2π/T.
+            # S(ω) on the characteristic scale of one frequency bin Δω = 2π/T.
             window_func = cos.(range(0, π, length=num_time_offsets+1)[1:end-1]).^2
             corrbuf .*= reshape(window_func, 1, 1, 1, num_time_offsets)
         end
@@ -133,8 +185,6 @@ function accum_sample!(qc::QuantumCorrelations; window)
         corr_fft! * corrbuf
 
         databuf .= corrbuf
-
-     
     end
 
     return nothing
