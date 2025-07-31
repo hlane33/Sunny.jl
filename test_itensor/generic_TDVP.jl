@@ -75,8 +75,8 @@ function Get_Structure_factor()
     N = 20
     # Time evolution parameters
     η = 0.1
-    tstep = 0.2
-    tmax = 10.0
+    tstep = 0.5
+    tmax = 3.0
     cutoff = 1E-10
     maxdim = 300  
 
@@ -103,7 +103,8 @@ function Get_Structure_factor()
 
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
-    energies = range(0, 5, N_timesteps) #No. Energies has to match N timesteps so that data sizing for 
+    energies = range(0, 5, N_timesteps)
+    println("energies size: ", size(energies))
 
     # Generate linearly spaced q-points and intensities params
     cryst = sys.crystal
@@ -111,11 +112,13 @@ function Get_Structure_factor()
     path = q_space_path(cryst, qs, 401)
 
     integrated = false #decides which method to do
+    manual_ft = false # Set to true to use manual Fourier transform
+    manual_plot = false # Now truly independent of manual_ft
+    
     if integrated
         # Using SampledCorrelations Augmentation (INTEGRATED WAY)
-        qc = Get_StructureFactor_with_Sunny(G, energies, sys)
-        res = Sunny.intensities(qc, path; energies = :available, kT=nothing)
-        #Julia not distinguishing between overloaded functions properly?!
+        sc = Get_StructureFactor_with_Sunny(G, energies, sys)
+        res = Sunny.intensities(sc, path; energies = :available, kT=nothing)
         fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain Integrated", saturation=0.5)
     else
         # UNINTEGRATED WAY USING QuantumCorrelations
@@ -124,59 +127,63 @@ function Get_Structure_factor()
                             energies=energies)
 
         prefft_buf = add_sample!(qc,G)
-        manual_plot = true # Set to true to plot manually
+        #prefft_buf contains samplebuf before fourier transforming so manual ft can be applied
+        obs_idx = 3
+        corr_idx = 1
+        y_idx = 1    
+        z_idx = 1    
+        pos_idx = 1  
+        new_allowed_qs = (2π/N) * (0:(N-1))
+        allowed_qs = 0:(1/N):2π
+        if manual_ft
+            # Manual Fourier transform code here using compute_S
+            buf_slice = prefft_buf[obs_idx, :, y_idx, z_idx, pos_idx, :]
+            out = compute_S(new_allowed_qs, energies, buf_slice, positions, c, ts) 
+            println("size out", size(out))
+            q_max = min(size(out,1), size(qc.data,4))
+            ω_max = min(size(out,2), size(qc.data,7))
+            qc.data[corr_idx, 1, 1, 1:q_max, y_idx, z_idx, 1:ω_max] .= out[1:q_max, 1:ω_max]
+        end
+
+        # Now independent plotting section
         if manual_plot
-            # Extract G for a specific observable and other fixed indices
-            obs_idx = 3  # or whichever observable you want
-            corr_idx =1
-            # Assuming sys.dims = (Lx, Ly, ...) and you want to fix other spatial dimensions
-            y_idx = 1    # fix y-coordinate if 2D/3D system
-            z_idx = 1    # fix z-coordinate if 3D system  
-            pos_idx = 1  # fix npos dimension
+            # Extract the data we want to plot
+            if manual_ft
+                # Use Compute_S and plot manually
+                plot_data = out
+            else
+                #use accum_sample but plot manually
+                data_slice = qc.data[corr_idx, 1, 1, :, y_idx, z_idx, :]
+                plot_data = real(data_slice)
+            end
 
-            # Extract the 2D slice: G[site, time]
-            data_slice = qc.data[corr_idx, 1, 1, :, y_idx, z_idx, :]   # Shape: (Lx, n_all_ω)
-            buf_slice = prefft_buf[obs_idx, :, y_idx, z_idx, pos_idx, :]  # Shape: (Lx, n_all_ω)
-            allowed_qs = 0:(1/N):2π
-            out = compute_S(new_allowed_qs, energies, buf_slice, positions, c, ts) #real(data_slice) # compute_S(new_allowed_qs, energies, G, positions, c, ts)
-
-            # Plotting
+            # Create the figure
             fig = Figure()
             ax = Axis(fig[1, 1],
                     xlabel = "qₓ",
-                    xticks = ([0, allowed_qs[end]], ["0", "2π"]),
+                    xticks = ([0, 2π], ["0", "2π"]),
                     ylabel = "Energy (meV)",
-                    title = "S=1/2 AFM DMRG/LLD for Chain lattice, manual plot")
+                    title = "S=1/2 AFM DMRG/LLD for Chain lattice")
 
-            # Create heatmap with controlled color range
-            vmax = 0.4 * maximum(out)  # Set upper limit for better contrast
-            hm = heatmap!(ax, allowed_qs, energies, out,
+            # Create heatmap
+            vmax = 0.4 * maximum(plot_data)
+            hm = heatmap!(ax, allowed_qs, energies, plot_data,
                         colorrange = (0, vmax),
-                        colormap = :viridis)  # :viridis is perceptually uniform
+                        colormap = :viridis)
 
-            # Add colorbar with clear labeling
+            # Add colorbar
             cbar = Colorbar(fig[1, 2], hm,
                         label = "Intensity (a.u.)",
-                        vertical = true,
-                        ticks = LinearTicks(5),
-                        flipaxis = false)
+                        vertical = true)
 
-            # Indicate clipped values in colorbar (optional)
-            cbar.limits = (0, vmax)  # Explicitly show the range
-            cbar.highclip = :red      # Color for values > vmax
-            cbar.lowclip = :blue      # Color for values < 0 (if needed)
-
-            # Set axis limits
             ylims!(ax, 0, 5)
-
-
         else
+            # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
             res = intensities(qc, path; energies = :available, kT=nothing)
             fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain with qc", saturation=0.5)
         end
     end
     return fig
-
 end
 
 # Execute the program
