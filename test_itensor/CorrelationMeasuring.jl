@@ -62,7 +62,7 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
     get_trajectory_from_G!(samplebuf, G, nsnaps, observables, atom_idcs)
 
     prefft_buf = copy(samplebuf)
-     println("Original: ", pointer(samplebuf))
+    println("Original: ", pointer(samplebuf))
     println("Copy: ", pointer(prefft_buf))
 
     return prefft_buf
@@ -154,37 +154,38 @@ function accum_sample!(qc::QuantumCorrelations; window)
     #$ @assert isodd(num_time_offsets)
     n_contrib[n_contrib .== 0] .= Inf
 
-    count = sc.nsamples += 1
+    # count = sc.nsamples += 1
 
     for j in 1:npos, i in 1:npos, (c, (α, β)) in enumerate(corr_pairs)
         # α, β = ci.I
 
-        sample_α = @view samplebuf[α,:,:,:,i,:]
-        sample_β = @view samplebuf[β,:,:,:,j,:]
+        # sample_α = @view samplebuf[α,:,:,:,i,:]
+        # sample_β = @view samplebuf[β,:,:,:,j,:]
         databuf  = @view data[c,i,j,:,:,:,:]
 
-        # According to Sunny convention, the correlation is between
-        # α† and β. This conjugation implements both the dagger on the α
-        # as well as the appropriate spacetime offsets of the correlation.
-        @. corrbuf = sample_β
-        corr_ifft! * corrbuf
-        corrbuf ./= n_contrib
+        # # According to Sunny convention, the correlation is between
+        # # α† and β. This conjugation implements both the dagger on the α
+        # # as well as the appropriate spacetime offsets of the correlation.
+        # @. corrbuf = sample_β
+        # corr_ifft! * corrbuf
+        # corrbuf ./= n_contrib
 
-        @assert window in (:cosine, :rectangular)
-        if window == :cosine
-            # Multiply the real-time correlation data by a cosine window that
-            # smoothly goes to zero at offsets approaching the trajectory
-            # length, Δt → T. This smooth windowing mitigates ringing artifacts
-            # that appear when imposing periodicity on the real-space
-            # trajectory. Note, however, that windowing also broadens the signal
-            # S(ω) on the characteristic scale of one frequency bin Δω = 2π/T.
-            window_func = cos.(range(0, π, length=num_time_offsets+1)[1:end-1]).^2
-            corrbuf .*= reshape(window_func, 1, 1, 1, num_time_offsets)
-        end
+        # @assert window in (:cosine, :rectangular)
+        # if window == :cosine
+        #     # Multiply the real-time correlation data by a cosine window that
+        #     # smoothly goes to zero at offsets approaching the trajectory
+        #     # length, Δt → T. This smooth windowing mitigates ringing artifacts
+        #     # that appear when imposing periodicity on the real-space
+        #     # trajectory. Note, however, that windowing also broadens the signal
+        #     # S(ω) on the characteristic scale of one frequency bin Δω = 2π/T.
+        #     window_func = cos.(range(0, π, length=num_time_offsets+1)[1:end-1]).^2
+        #     corrbuf .*= reshape(window_func, 1, 1, 1, num_time_offsets)
+        # end
 
-        corr_fft! * corrbuf
+        # corr_fft! * corrbuf
 
-        databuf .= corrbuf
+        # databuf .= corrbuf
+        databuf .= samplebuf[3,:,:,:,1,:]
     end
 
     return nothing
