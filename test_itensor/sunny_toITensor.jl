@@ -297,7 +297,7 @@ function create_honeycomb_system(Lx::Int, Ly::Int, Lz::Int=1;
     
     # Create system
     pbc = (true, !periodic_bc, true)
-    sys = System(crystal, [1 => Moment(; s=s, g=2), 2 => Moment(; s=s, g=2)], :dipole)
+    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
     
     # Set exchanges
     nn_bond = Bond(1, 2, [0, 0, 0])    # A to B in same cell
@@ -313,10 +313,55 @@ function create_honeycomb_system(Lx::Int, Ly::Int, Lz::Int=1;
     return sys_inhom
 end
 
+function create_dimerized_spin_chain(Lx::Int, Ly::Int=1, Lz::Int=1; 
+                                a::Float64=2.46, s::Float64=0.5, 
+                                J1::Float64=1.0, J2::Float64=0.0,
+                                periodic_bc::Bool=false)
+    # Spin chain system with Spin 1/2  frustrated system that mimics https://arxiv.org/pdf/2507.19412v1
+
+    # CuGeO3 crystallizes in orthorhombic Pnmm space group
+    # Approximate lattice parameters (Angstrom)
+    a, b, c = 4.8, 8.5, 2.9
+    
+    latvecs = lattice_vectors(a, b, c, 90, 90, 90)
+    
+    # Simplified positions - focus on Cu chain along c-axis
+    # In reality, there are more atoms, but we focus on magnetic Cu sites
+    positions = [[0, 0, 0], [0, 0, 0.5]]  # Cu positions along chain
+    
+    crystal = Crystal(latvecs, positions, "P m m m")  # Approximate space group
+    
+    # Create system - extend along c-axis (chain direction)
+    sys = System(crystal, (1, 1, 20), [1 => Moment(; s=s, g=2), 2 => Moment(; s=1/2, g=2)], :SUN)
+
+  # Clear any existing interactions
+    
+    # Nearest-neighbor interactions with dimerization
+    # J1 interactions alternate as J1(1±δ) due to dimerization
+    
+    # For a dimerized chain, we need to handle the alternating bonds
+    # This is simplified - in practice, you might need to set bonds individually
+    
+    # Intra-dimer bonds (stronger): J1(1+δ)
+    delta = 0.04
+
+    set_exchange!(sys, J1 * (1 + delta), Bond(1, 2, [0, 0, 0]))
+    
+    # Inter-dimer bonds (weaker): J1(1-δ)  
+    set_exchange!(sys, J1 * (1 - delta), Bond(1, 1, [0, 0, 1]))
+
+    # Next-nearest-neighbor interactions J2
+    set_exchange!(sys, J2, Bond(1, 1, [0, 0, 2]))
+
+    sys_inhom = to_inhomogeneous(sys)
+    remove_periodicity!(sys_inhom, pbc)
+   
+    return sys_inhom
+
 # ============================================================================
 #  TEST USAGE
 # ============================================================================
-
+end 
 
 
 println("=== DMRG Calculation ===")
@@ -338,7 +383,7 @@ sys = repeat_periodically(sys, (Lx, Ly, 1))
 sys_inhom = to_inhomogeneous(sys)
 remove_periodicity!(sys_inhom, pbc)
 
-chain_sys = create_square_system(5,4; a=1.0, s=0.5, J1=1.0, J2=0.5, periodic_bc=false)
+chain_sys = create_dimerized_spin_chain(20; a=4.2, s=0.5, J1=13.79, J2=4.83, periodic_bc=false)
 
 # Calculate ground state
 
