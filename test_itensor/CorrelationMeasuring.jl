@@ -72,16 +72,31 @@ function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
     (; data, corr_pairs, samplebuf, corrbuf, space_fft!, time_fft!) = qc
     npos = size(samplebuf)[5]
     
-    # Direct FFT transforms without correlation computation
+    # Get q-values for the first spatial dimension (dimension 2 of samplebuf)
+    Lx = size(samplebuf, 2)
+    print(Lx)
+    q_values = 2π * fftfreq(Lx, 1.0)
+    
+    # Define the phase shift parameter c (you'll need to define this based on your problem)
+    c = div(Lx,2)  # Replace with your actual c value
+    
+    # Calculate phase shift for (x-c) term
+    phase_shift = exp.(-1im .* q_values .* c)
+    
+    # Spatial FFT with conjugation for exp(iqx) convention
     # Transform A(q) = ∑ exp(iqr) A(r).
     # This is opposite to the FFTW convention, so we must conjugate
     # the fft by a complex conjugation to get the correct sign.
     samplebuf .= conj.(samplebuf)
     space_fft! * samplebuf
     samplebuf .= conj.(samplebuf)
-
-
-    # Transform A(ω) = ∑ exp(-iωt) A(t)
+    
+    # Apply phase shift to the first spatial dimension (dimension 2 of samplebuf)
+    # Reshape phase_shift to broadcast over dimension 2
+    phase_shift_reshaped = reshape(phase_shift, 1, length(phase_shift), 1, 1, 1, 1)
+    samplebuf .*= phase_shift_reshaped
+    
+    # Temporal FFT - Transform A(ω) = ∑ exp(-iωt) A(t)
     # Direct time FFT without zero-padding considerations
     time_fft! * samplebuf
     
@@ -95,25 +110,17 @@ function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
         end
         
         # Extract transformed data - need to match manual method's 2D extraction
-        sample_data = @view samplebuf[α,:,:,:,i,:]  # 4D: [:, :, :, time]
-        databuf = @view data[c,i,j,:,:,:,:]         # 4D: [q, y, z, ω]
+        sample_data = @view samplebuf[α,:,:,:,i,:] # 4D: [:, :, :, time]
+        databuf = @view data[c,i,j,:,:,:,:] # 4D: [qx, qy, qz, ω]
         
         # For equivalence to manual method, we need to extract the 2D slice
         # that corresponds to out[q, ω] dimensions
         # Assuming the spatial FFT puts q in first dimension and time FFT puts ω in last
-        y_idx = 1  # Fixed y coordinate (or first y if multiple)
-        z_idx = 1  # Fixed z coordinate (or first z if multiple)
+        y_idx = 1 # Fixed y coordinate (or first y if multiple)
+        z_idx = 1 # Fixed z coordinate (or first z if multiple)
         
         # Extract the 2D q-ω slice like manual method
-        transformed_2d = @view sample_data[:, y_idx, z_idx, :]  # 2D: [q, ω]
-        
-        
-        # Optional windowing in time/frequency domain
-        if window == :cosine
-            num_time_offsets = size(transformed_2d, 2)
-            window_func = cos.(range(0, π, length=num_time_offsets+1)[1:end-1]).^2
-            transformed_2d .*= reshape(window_func, 1, num_time_offsets)
-        end
+        transformed_2d = @view sample_data[:, y_idx, z_idx, :] # 2D: [q, ω]
         
         # Match manual assignment pattern: assign 2D to specific slice of 4D
         q_size, ω_size = size(transformed_2d)
@@ -198,7 +205,7 @@ function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}; window=:co
     prefft_buf = new_sample!(qc, G)
     
     # Step 2: Use Sunny's existing accum_sample! 
-    accum_sample!(qc; window)
+    accum_sample_other!(qc; window)
     
     println("Quantum TDVP data processed through Sunny's infrastructure")
 

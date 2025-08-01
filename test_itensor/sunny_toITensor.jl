@@ -84,6 +84,7 @@ function build_hamiltonian_from_bonds(bond_pairs, sys::System; conserve_qns=true
     os = OpSum()
     #Currently only does nearest neighbour coupling
     for (i, j, coupling) in bond_pairs
+        print("Processing bond pair ($i, $j) with coupling: ")
         # Extract coupling matrix elements
         J_xx = coupling[1, 1]  # SxSx coupling
         J_yy = coupling[2, 2]  # SySy coupling
@@ -317,7 +318,7 @@ end
 # ============================================================================
 
 
-"""
+
 println("=== DMRG Calculation ===")
 
 
@@ -337,10 +338,13 @@ sys = repeat_periodically(sys, (Lx, Ly, 1))
 sys_inhom = to_inhomogeneous(sys)
 remove_periodicity!(sys_inhom, pbc)
 
+chain_sys = create_square_system(5,4; a=1.0, s=0.5, J1=1.0, J2=0.5, periodic_bc=false)
+
 # Calculate ground state
-custom_results = calculate_ground_state(sys_inhom; 
+
+custom_results = calculate_ground_state(chain_sys; 
                                       conserve_qns=true,  # Off-diagonal terms break QN conservation
                                       )
 println("END")
 
-"""
+
