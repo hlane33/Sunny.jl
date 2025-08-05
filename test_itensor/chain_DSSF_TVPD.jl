@@ -80,8 +80,8 @@ function main()
     # Parameters
     N = 15 #Number of sites
     η = 0.1
-    tstep = 0.5
-    tmax = 5.0
+    tstep = 0.2
+    tmax = 10.0
     cutoff = 1E-10
     maxdim = 300  # For TDVP evolution
 

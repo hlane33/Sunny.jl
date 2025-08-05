@@ -78,13 +78,13 @@ function compute_S_v2(qs, ωs, G, positions, c, ts)
                 pos_factor = exp(-im * q * (positions[xi] - c))
                 time_factor = exp(im * ω * ts[ti])
                 # Multiply with G and take the real part
-                sum_val += real(pos_factor * time_factor * G[xi, ti])
+                sum_val += pos_factor * time_factor * G[xi, ti]
             end
             out[qi, ωi] = sum_val
         end
     end
     print("V2")
-    return real(out)
+    return out
 end
 
 function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
@@ -107,9 +107,9 @@ function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
     
     #compute S params
     positions = 1:Lx
-    energies = range(0, 5, 20)
+    energies = range(0, 5, 500)
     allowed_qs = 0:(1/Lx):2π
-    new_allowed_qs = (2π/Lx) * (0:(Lx-1))
+    new_allowed_qs = (π/Lx) * (0:(Lx-1))
     ts = 0.0:(Lt-1) # Assuming uniform time steps, adjust as needed
     G = samplebuf[obs_idx, :, y_idx, z_idx, 1, :]
     out = compute_S_v2(new_allowed_qs, energies, G, positions, c, ts)
