@@ -84,7 +84,7 @@ function build_hamiltonian_from_bonds(bond_pairs, sys::System; conserve_qns=true
     os = OpSum()
     #Currently only does nearest neighbour coupling
     for (i, j, coupling) in bond_pairs
-        print("Processing bond pair ($i, $j) with coupling: ")
+        print("Processing bond pair ($i, $j) with coupling:  $coupling\n")
         # Extract coupling matrix elements
         J_xx = coupling[1, 1]  # SxSx coupling
         J_yy = coupling[2, 2]  # SySy coupling
@@ -164,7 +164,7 @@ function calculate_ground_state(sys::System,
     
     # Create initial state
     if conserve_qns
-       psi0 = create_AFM_state(sites,sys)
+        psi0 = create_AFM_state(sites,sys)
     else
         psi0 = random_mps(sites; linkdims)
     end
@@ -206,7 +206,7 @@ function create_triangular_system(Lx::Int, Ly::Int, Lz::Int=1;
     crystal = Crystal(latvecs, [[0, 0, 0]])
     
     # Create system
-    pbc = (true, !periodic_bc, true)
+    pbc = (true, !periodic_bc, true) #if true then not periodic in that direction
     sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
     
     # Set exchanges
@@ -313,57 +313,78 @@ function create_honeycomb_system(Lx::Int, Ly::Int, Lz::Int=1;
     return sys_inhom
 end
 
-function create_dimerized_spin_chain(Lx::Int, Ly::Int=1, Lz::Int=1; 
-                                a::Float64=2.46, s::Float64=0.5, 
-                                J1::Float64=1.0, J2::Float64=0.0,
-                                periodic_bc::Bool=false)
-    # Spin chain system with Spin 1/2  frustrated system that mimics https://arxiv.org/pdf/2507.19412v1
+function create_dimerized_spin_chain(Lx::Int=4, Ly::Int=1, Lz::Int=1;
+                                      a::Float64=2.46, s::Float64=0.5,
+                                      J1::Float64=1.0, J2::Float64=0.0,
+                                      delta::Float64=0.04,
+                                      periodic_bc::Bool=false)
+    
+    # Spin chain system with Spin 1/2 frustrated system that mimics https://arxiv.org/pdf/2507.19412v1
+    # Using J1-J2 δ dimerized chain model
+    
+    # For a proper dimerized chain, we need a 4-site unit cell to capture the alternating pattern
+    # Unit cell: A-B-A-B with alternating strong/weak bonds
+    # Strong bonds: A(1)-B(2) and A(3)-B(4) 
+    # Weak bonds: B(2)-A(3) and B(4)-A(1+1) (next unit cell)
 
-    # CuGeO3 crystallizes in orthorhombic Pnmm space group
-    # Approximate lattice parameters (Angstrom)
-    a, b, c = 4.8, 8.5, 2.9
-    
-    latvecs = lattice_vectors(a, b, c, 90, 90, 90)
-    
-    # Simplified positions - focus on Cu chain along c-axis
-    # In reality, there are more atoms, but we focus on magnetic Cu sites
-    positions = [[0, 0, 0], [0, 0, 0.5]]  # Cu positions along chain
-    
-    crystal = Crystal(latvecs, positions, "P m m m")  # Approximate space group
-    
-    # Create system - extend along c-axis (chain direction)
-    sys = System(crystal, (1, 1, 20), [1 => Moment(; s=s, g=2), 2 => Moment(; s=1/2, g=2)], :SUN)
+    # Lattice vectors (monoclinic, P2₁/m)
+    a = 2.0  # doubled due to dimerization
+    b = 1.0  # arbitrary
+    c = 1.0  # arbitrary
+    β = 90.0 # monoclinic angle
+    γ = 95.0 # monoclinic angle
+    latvecs = lattice_vectors(a, b, c, β, γ, β) # Simple orthorhombic for simplicity
 
-  # Clear any existing interactions
-    
-    # Nearest-neighbor interactions with dimerization
-    # J1 interactions alternate as J1(1±δ) due to dimerization
-    
-    # For a dimerized chain, we need to handle the alternating bonds
-    # This is simplified - in practice, you might need to set bonds individually
-    
-    # Intra-dimer bonds (stronger): J1(1+δ)
-    delta = 0.04
+    # Atomic positions (2 spins per cell)
+    positions = [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]]  # in fractional coordinates
+    types = ["Cu","Cu"]  # Assuming spin-1/2 Cu²⁺ ions
+    cryst = Crystal(latvecs, positions; types)  # 11 = P2₁/m space group number
 
-    set_exchange!(sys, J1 * (1 + delta), Bond(1, 2, [0, 0, 0]))
+    # Spin properties (e.g., S=1/2, g=2)
+    S = 1/2
+    g = 2.0
+    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole; dims=(Lx,1,1))  # 1x1x1 supercell (minimal for dimerization)
+
+    # Exchange interactions (J₁ ± δ)
+    J1 = 1.0   # Average nearest-neighbor coupling
+    J2 = 0.2  # Example value
+    δ = 0.04   # Dimerization parameter
+    J1_strong = J1 + δ
+    J1_weak = J1 - δ
+
+    # Set alternating bonds along a-axis
+    set_exchange!(sys, J1_strong, Bond(1, 2, [0,0,0]))  # Intra-cell strong bond
+    set_exchange!(sys, J1_weak, Bond(2, 1, [1,0,0]))    # Inter-cell weak bond (PBC wraps)
+
+    # Optional: Add J₂ (next-nearest-neighbor)
     
-    # Inter-dimer bonds (weaker): J1(1-δ)  
-    set_exchange!(sys, J1 * (1 - delta), Bond(1, 1, [0, 0, 1]))
-
-    # Next-nearest-neighbor interactions J2
-    set_exchange!(sys, J2, Bond(1, 1, [0, 0, 2]))
-
+    set_exchange!(sys, J2, Bond(1, 1, [1,0,0]))  # J₂ couples spin 1 to itself in next cell
+    set_exchange!(sys, J2, Bond(2, 2, [1,0,0]))
+    # Visualize the crystal structure
+    fig = view_crystal(sys; ndims=2)
+    display(fig)
+    
+    # Convert to inhomogeneous system
     sys_inhom = to_inhomogeneous(sys)
+    
+    # Set boundary conditions
+    # Remove periodicity in x-direction (chain direction) only
+    pbc = (!periodic_bc, true, true)  # (x, y, z) - remove periodicity in x
     remove_periodicity!(sys_inhom, pbc)
-   
+    println("Applied open boundary conditions in chain direction")
+
+    println("Using periodic boundary conditions")
+
+    
     return sys_inhom
+end
 
 # ============================================================================
 #  TEST USAGE
 # ============================================================================
-end 
 
 
+"""
 println("=== DMRG Calculation ===")
 
 
@@ -383,13 +404,17 @@ sys = repeat_periodically(sys, (Lx, Ly, 1))
 sys_inhom = to_inhomogeneous(sys)
 remove_periodicity!(sys_inhom, pbc)
 
-chain_sys = create_dimerized_spin_chain(20; a=4.2, s=0.5, J1=13.79, J2=4.83, periodic_bc=false)
+
+
+sys = create_dimerized_spin_chain(2; a=1.0, s=0.5, J1=1.0, J2=0.5, periodic_bc=false)
 
 # Calculate ground state
 
-custom_results = calculate_ground_state(chain_sys; 
+custom_results = calculate_ground_state(sys; 
                                       conserve_qns=true,  # Off-diagonal terms break QN conservation
                                       )
+
 println("END")
+"""
 
 
