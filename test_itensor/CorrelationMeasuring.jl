@@ -68,78 +68,23 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
     return prefft_buf
 end
 
-"""
-FFT-based computation of S with zero-padding for arbitrary frequencies
-
-Args:
-    qs: Array of spatial frequencies
-    ωs: Array of temporal frequencies  
-    G: Complex matrix [nx × nt]
-    positions: Spatial grid points
-    c: Spatial offset parameter
-    ts: Temporal grid points
-
-Returns:
-    out: Real matrix [length(qs) × length(ωs)]
-"""
-function compute_S_fft_padded(qs, ωs, G, positions, ts)
-    
-    nx = length(positions)
-    nt = length(ts)
-    c = div(nx, 2)  # Centering offset
-    
-    # Get grid spacings (assuming uniform grids)
-    dx = positions[2] - positions[1]
-    dt = ts[2] - ts[1]
-    
-    # Calculate required grid sizes to accommodate desired frequencies
-    max_q = maximum(abs.(qs))
-    max_ω = maximum(abs.(ωs))
-    
-    # Pad to at least 2x original size and accommodate frequency range
-    nx_pad = max(2*nx, Int(ceil(2 * max_q * (positions[end] - positions[1]) / π)))
-    nt_pad = max(2*nt, Int(ceil(2 * max_ω * (ts[end] - ts[1]) / π)))
-    
-    # Make sizes powers of 2 for efficient FFT
-    nx_pad = nextpow(2, nx_pad)
-    nt_pad = nextpow(2, nt_pad)
-    
-    # Zero-pad G
-    G_padded = zeros(ComplexF64, nx_pad, nt_pad)
-    G_padded[1:nx, 1:nt] = G
-    
-    # Take 2D FFT
-    G_fft = fft(G_padded)
-    
-    # Get FFT frequency grids
-    kx_fft = fftfreq(nx_pad, 1/dx) * 2π
-    ωt_fft = fftfreq(nt_pad, 1/dt) * 2π
-    
-    # Phase correction factors for grid offsets
-    x0 = positions[1] - c
-    t0 = ts[1]
-    
-    # Initialize output
-    out = zeros(Float64, length(qs), length(ωs))
-    
-    # Compute S for each (q,ω) pair
-    for (qi, q) in enumerate(qs)
-        for (ωi, ω) in enumerate(ωs)
-            # Find closest FFT frequency indices
-            kx_idx = argmin(abs.(kx_fft .- q))
-            ωt_idx = argmin(abs.(ωt_fft .- ω))
-            
-            # Apply phase corrections for grid offsets
-            phase_x = exp(-1im * q * x0)
-            phase_t = exp(-1im * ω * t0)
-            
-            # Extract result and scale by grid spacing
-            result = real(G_fft[kx_idx, ωt_idx] * phase_x * phase_t) * dx * dt
-            out[qi, ωi] = result
+function compute_S_v2(qs, ωs, G, positions, c, ts)
+    out = zeros(ComplexF64, length(qs), length(ωs))
+    for (qi, q) ∈ enumerate(qs)
+        for (ωi, ω) ∈ enumerate(ωs)
+            sum_val = 0.0
+            for xi ∈ 1:length(positions), ti ∈ 1:length(ts)
+                 # Split into position and time exponentials
+                pos_factor = exp(-im * q * (positions[xi] - c))
+                time_factor = exp(im * ω * ts[ti])
+                # Multiply with G and take the real part
+                sum_val += real(pos_factor * time_factor * G[xi, ti])
+            end
+            out[qi, ωi] = sum_val
         end
     end
-    
-    return out
+    print("V2")
+    return real(out)
 end
 
 function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
@@ -149,6 +94,7 @@ function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
     
     # Get q-values for the first spatial dimension
     Lx = size(samplebuf, 2) 
+    c = div(Lx, 2) # Centering for 1D chain
  
     # Get ω-values for temporal dimension
     Lt = size(samplebuf, 6)
@@ -161,15 +107,16 @@ function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
     
     #compute S params
     positions = 1:Lx
-    q_values = 2π * fftfreq(Lx, 1.0)
-    ω_values = 2π * fftfreq(Lt, 1.0)
+    energies = range(0, 5, 20)
+    allowed_qs = 0:(1/Lx):2π
+    new_allowed_qs = (2π/Lx) * (0:(Lx-1))
     ts = 0.0:(Lt-1) # Assuming uniform time steps, adjust as needed
     G = samplebuf[obs_idx, :, y_idx, z_idx, 1, :]
-    out = compute_S_fft_padded(q_values, ω_values, G, positions, ts)
+    out = compute_S_v2(new_allowed_qs, energies, G, positions, c, ts)
 
     #data slice params 
-    q_max = min(size(out,1), size(qc.data,4))
-    ω_max = min(size(out,2), size(qc.data,7))
+    q_max = min(size(out,1), size(data,4))
+    ω_max = min(size(out,2), size(data,7))
     qc.data[corr_idx, 1, 1, 1:q_max, y_idx, z_idx, 1:ω_max] .= out[1:q_max, 1:ω_max]
 
 end

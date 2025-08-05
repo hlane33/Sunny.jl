@@ -65,7 +65,7 @@ function compute_S(qs, ωs, G, positions, c, ts)
                        sin(ω * ts[ti]) * imag(G[xi, ti]))
                 sum_val += val
             end
-            out[qi, ωi] = sum_val
+            out[qi, ωi] = real(sum_val)
         end
     end
     return out
@@ -80,8 +80,8 @@ function main()
     # Parameters
     N = 15 #Number of sites
     η = 0.1
-    tstep = 0.2
-    tmax = 10.0
+    tstep = 0.5
+    tmax = 5.0
     cutoff = 1E-10
     maxdim = 300  # For TDVP evolution
 
@@ -116,7 +116,10 @@ function main()
     allowed_qs = 0:(1/N):2π
     new_allowed_qs = (2π/N) * (0:(N-1))  # [0, 2π/N, 4π/N, ..., 2π(N-1)/N] - should match sunny_to_itensor?
     positions = 1:N
-    out = compute_S(new_allowed_qs, energies, G, positions, c, ts)
+    out = compute_S_v2(new_allowed_qs, energies, G, positions, c, ts)
+
+    print(out)
+    print(typeof(out))
     intensity = abs2.(out)
     print("structure factor output: ", out)
 
@@ -126,7 +129,7 @@ function main()
             xlabel = "qₓ",
             xticks = ([0, allowed_qs[end]], ["0", "2π"]),
             ylabel = "Energy (meV)",
-            title = "S=1/2 AFM DMRG/TDVP for Chain lattice")
+            title = "S=1/2 AFM DMRG/TDVP for Chain lattice w/0 sunny")
 
     # Create heatmap with controlled color range
     vmax = 0.4 * maximum(out)  # Set upper limit for better contrast

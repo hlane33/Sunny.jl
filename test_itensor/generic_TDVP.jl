@@ -76,7 +76,7 @@ function Get_Structure_factor()
     # Time evolution parameters
     η = 0.1
     tstep = 0.5
-    tmax = 3.0
+    tmax = 5.0
     cutoff = 1E-10
     maxdim = 300  
 
@@ -104,6 +104,7 @@ function Get_Structure_factor()
     # Compute correlation function using TDVP
     G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
     energies = range(0, 5, N_timesteps)
+    positions = 1:N
     println("energies size: ", size(energies))
 
     # Generate linearly spaced q-points and intensities params
@@ -138,7 +139,7 @@ function Get_Structure_factor()
         if manual_ft
             # Manual Fourier transform code here using compute_S
             buf_slice = prefft_buf[obs_idx, :, y_idx, z_idx, pos_idx, :]
-            out = compute_S(new_allowed_qs, energies, buf_slice, positions, c, ts) 
+            out = compute_S_v2(new_allowed_qs, energies, buf_slice, positions, c, ts) 
             println("size out", size(out))
             q_max = min(size(out,1), size(qc.data,4))
             ω_max = min(size(out,2), size(qc.data,7))
@@ -180,7 +181,7 @@ function Get_Structure_factor()
         else
             # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
             res = intensities(qc, path; energies = :available, kT=nothing)
-            fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain with qc", saturation=0.5)
+            fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain with intensities()", saturation=0.9)
         end
     end
     return fig

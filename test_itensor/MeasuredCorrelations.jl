@@ -65,6 +65,32 @@ function to_reshaped_rlu(qc::QuantumCorrelations, q)
     return qc.crystal.recipvecs \ orig_cryst.recipvecs * q
 end
 
+# Determine a step size and down sampling factor that results in precise
+# satisfaction of user-specified energy values.
+function adjusted_dt_and_downsampling_factor(dt, nω, ωmax)
+    @assert π/dt > ωmax "Desired `ωmax` not possible with specified `dt`. Choose smaller `dt` value."
+
+    # Assume nω is the number of non-negative frequencies and determine total
+    # number of frequency bins.
+    n_all_ω = 2(Int64(nω) - 1)
+
+    # Find downsampling factor for the given `dt` that yields an `ωmax` higher
+    # than or equal to given `ωmax`. Then adjust `dt` down so that specified
+    # `ωmax` is satisfied exactly.
+    Δω = ωmax/(nω-1)
+    measperiod = ceil(Int, π/(dt * ωmax))
+    dt_new = 2π/(Δω*measperiod*n_all_ω)
+
+    # Warn the user if `dt` required drastic adjustment, which will slow
+    # simulations.
+    # if dt_new/dt < 0.9
+    #     @warn "To satisify specified energy values, the step size adjusted down by more than 10% from a value of dt=$dt to dt=$dt_new"
+    # end
+
+    return dt_new, measperiod
+end
+
+
 """
     QuantumCorrelations(sys::System; measure, energies)
 
@@ -73,6 +99,8 @@ An object to accumulate samples of dynamical pair correlations from a preexistin
 function QuantumCorrelations(sys::System; measure, energies, positions=nothing)
     if isnothing(energies)
         n_all_ω = 1
+        measperiod = 1
+        isnan(dt) || error("Must use dt=NaN when energies=nothing")
         Δω = NaN
     else
         nω = length(energies)
@@ -83,6 +111,7 @@ function QuantumCorrelations(sys::System; measure, energies, positions=nothing)
         all(≈(ΔEs[1]), ΔEs) || error("`energies` must be equally spaced.")
         Δω = ωmax/(nω-1)
     end
+
 
     # Determine the positions of the observables in the MeasureSpec. By default,
     # these will just be the atom indices. 
