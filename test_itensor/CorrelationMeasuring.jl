@@ -1,5 +1,5 @@
 #Like CorrelationSampling but for MeasuredCorrelations with QuantumCorrelations object
-
+using LinearAlgebra
 
 
 function get_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
@@ -68,22 +68,61 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
     return prefft_buf
 end
 
-function compute_S_v2(qs, ωs, G, positions, c, ts)
+function linear_predict(y::Vector{ComplexF64}, n_predict::Int, n_coeff::Int)
+    print(y)
+    n = length(y)
+    print("Length n", n)
+    n ≤ n_coeff && error("Time series too short for prediction.")
+    
+    # Construct the Toeplitz matrix for least-squares fitting
+    Y = zeros(ComplexF64, n - n_coeff, n_coeff)
+    for i in 1:(n - n_coeff)
+        Y[i, :] = y[(n_coeff + i - 1):-1:i]
+    end
+    
+    # Solve Y * d ≈ y[n_coeff+1:end] for coefficients d
+    d = Y \ y[n_coeff+1:end]
+    
+    # Extrapolate using the AR model
+    y_pred = copy(y)
+    for i in (n+1):(n + n_predict)
+        next_val = sum(d .* y_pred[(i-1):-1:(i - n_coeff)])
+        push!(y_pred, next_val)
+    end
+    
+    return y_pred
+end
+
+function compute_S_v2(qs, ωs, G, positions, c, ts; n_predict=100, n_coeff=20)
     out = zeros(ComplexF64, length(qs), length(ωs))
-    for (qi, q) ∈ enumerate(qs)
-        for (ωi, ω) ∈ enumerate(ωs)
+    
+    # Extend time axis via linear prediction
+    extended_ts = [ts; ts[end] .+ (1:n_predict) * (ts[2] - ts[1])]
+    extended_G = similar(G, (size(G,1), length(extended_ts)))
+    
+    # Extrapolate each spatial point's time series
+    for xi in 1:size(G,1)
+        extended_G[xi, :] = linear_predict(G[xi, :], n_predict, n_coeff)
+    end
+
+    #cosine windowing
+    window_func = cos.(range(0, π, length=length(extended_ts))).^ 2
+    extended_G .*= window_func'  # Apply to all spatial sites
+    
+    # Compute Fourier transform on extended data
+    for (qi, q) in enumerate(qs)
+        for (ωi, ω) in enumerate(ωs)
             sum_val = 0.0
-            for xi ∈ 1:length(positions), ti ∈ 1:length(ts)
-                 # Split into position and time exponentials
+            for xi in 1:length(positions), ti in 1:length(extended_ts)
                 pos_factor = exp(-im * q * (positions[xi] - c))
-                time_factor = exp(im * ω * ts[ti])
-                # Multiply with G and take the real part
-                sum_val += pos_factor * time_factor * G[xi, ti]
+                time_factor = exp(im * ω * extended_ts[ti])
+                sum_val += pos_factor * time_factor * extended_G[xi, ti]
             end
             out[qi, ωi] = sum_val
         end
     end
-    print("V2")
+    
+    println("Applied linear prediction with n_predict=$n_predict")
     return out
 end
 
@@ -109,10 +148,10 @@ function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
     positions = 1:Lx
     energies = range(0, 5, 500)
     allowed_qs = 0:(1/Lx):2π
-    new_allowed_qs = (π/Lx) * (0:(Lx-1))
+    new_allowed_qs = (2π/Lx) * (0:(Lx-1))
     ts = 0.0:(Lt-1) # Assuming uniform time steps, adjust as needed
     G = samplebuf[obs_idx, :, y_idx, z_idx, 1, :]
-    out = compute_S_v2(new_allowed_qs, energies, G, positions, c, ts)
+    out = compute_S_v2(new_allowed_qs, energies, G, positions, c, ts; n_predict = Lt, n_coeff = div(Lt,2))
 
     #data slice params 
     q_max = min(size(out,1), size(data,4))
