@@ -92,29 +92,22 @@ end
 
 
 """
-    QuantumCorrelations(sys::System; measure, energies)
+    QuantumCorrelations(sys::System, ts::LenStepRange, n_predict::Int, n_coeff::Int;
+                             measure=nothing, energies=range(0, 5, length(ts)),
+                             positions=nothing)
 
 An object to accumulate samples of dynamical pair correlations from a preexisting G obect of quantum trajectories
 """
-function QuantumCorrelations(sys::System; measure, energies, positions=nothing)
-    if isnothing(energies)
-        n_all_ω = 1
-        measperiod = 1
-        isnan(dt) || error("Must use dt=NaN when energies=nothing")
-        Δω = NaN
-    else
-        nω = length(energies)
-        n_all_ω = 2(Int(nω) - 1)
-        ωmax = energies[end]
-        iszero(energies[1]) && ωmax > 0 || error("`energies` must be a range from 0 to a positive value")
-        ΔEs = energies[2:end] - energies[1:end-1]
-        all(≈(ΔEs[1]), ΔEs) || error("`energies` must be equally spaced.")
-        Δω = ωmax/(nω-1)
-    end
-
+function QuantumCorrelations(sys::System, qs_length::Int, energies_length::Int;
+                             measure=nothing, initial_energies=NaN,
+                             positions=nothing)         
+    #given that we now use manual FT instead of FFT, zero padding is not needed
+    #just have this rather than the longer way in SampledCorrelations.jl
+    n_all_ω = length(initial_energies) # Number of non-negative frequencies, including
+    Δω = initial_energies[2] - initial_energies[1] # Energy step size
 
     # Determine the positions of the observables in the MeasureSpec. By default,
-    # these will just be the atom indices. 
+    # these will just be the atom indices.
     positions = if isnothing(positions)
         map(eachsite(sys)) do site
             sys.crystal.positions[site.I[4]]
@@ -136,8 +129,9 @@ function QuantumCorrelations(sys::System; measure, energies, positions=nothing)
     samplebuf = zeros(ComplexF64, num_observables(measure), sys.dims..., npos, n_all_ω)
     corrbuf = zeros(ComplexF64, sys.dims..., n_all_ω)
 
-    # The output data has n_all_ω many (positive and negative and zero) frequencies
-    data = zeros(ComplexF64, num_correlations(measure), npos, npos, sys.dims..., n_all_ω)
+    # The output data has n_all_ω frequencies and data accounts for extended data via linear prediction
+    #Assumes 1D system
+    data = zeros(ComplexF64, num_correlations(measure), npos, npos, qs_length, 1, 1, energies_length)
 
     # The normalization is defined so that the prod(sys.dims)-many estimates of
     # the structure factor produced by the correlation conj(space_fft!) *
