@@ -1,4 +1,4 @@
-using ITensors, ITensorMPS, GLMakie, Sunny
+using ITensors, ITensorMPS, GLMakie, Sunny, Serialization
 include("sunny_toITensor.jl")
 
 #################
@@ -54,7 +54,21 @@ function compute_G(N, ψ, ϕ, H, sites, η, ts, tstep, cutoff, maxdim)
     return G
 end
 
-function compute_S(qs, ωs, G, positions, c, ts)
+function compute_S(qs, ωs, G, positions, c, ts; n_predict=100, n_coeff=20)
+    out = zeros(Float64, length(qs), length(ωs))
+
+    # Extend time axis via linear prediction
+    extended_ts = [ts; ts[end] .+ (1:n_predict) * (ts[2] - ts[1])]
+    extended_G = similar(G, (size(G,1), length(extended_ts)))
+    
+    # Extrapolate each spatial point's time series
+    for xi in 1:size(G,1)
+        extended_G[xi, :] = linear_predict(G[xi, :], n_predict, n_coeff)
+    end
+
+    #cosine windowing
+    window_func = cos.(range(0, π, length=length(extended_ts))).^ 2
+    extended_G .*= window_func'  # Apply to all spatial sites
     out = zeros(Float64, length(qs), length(ωs))
     for (qi, q) ∈ enumerate(qs)
         for (ωi, ω) ∈ enumerate(ωs)
@@ -78,7 +92,7 @@ end
 
 function main()
     # Parameters
-    N = 15 #Number of sites
+    N = 20 #Number of sites
     η = 0.1
     tstep = 0.2
     tmax = 10.0
@@ -101,27 +115,24 @@ function main()
 
     # Prepare time evolution
     ts = 0.0:tstep:tmax
+    n_predict = size(ts, 1)
+    n_coeff = div(n_predict,2)
     N_timesteps = size(ts,1)
     c = div(N, 2)
     ϕ = apply_op(ψ, "Sz", sites, c)  # Excited state
 
     # Compute correlation function using TDVP
-    G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
-
-    print("correlations", G)
+    g_filename = "G_array_$(N)sites_$(tmax)tmax.jls"
+    G = load_object(g_filename)
 
 
     # Compute structure factor
-    energies = range(0, 5,N_timesteps)
+    energies = range(0, 5,500)
     allowed_qs = 0:(1/N):2π
     new_allowed_qs = (2π/N) * (0:(N-1))  # [0, 2π/N, 4π/N, ..., 2π(N-1)/N] - should match sunny_to_itensor?
     positions = 1:N
-    out = compute_S_v2(new_allowed_qs, energies, G, positions, c, ts)
-
-    print(out)
-    print(typeof(out))
-    intensity = abs2.(out)
-    print("structure factor output: ", out)
+    out = compute_S(allowed_qs, energies, G, positions, c, ts; n_predict=n_predict, n_coeff=n_coeff)
+    print("Shape of out: ", size(out))
 
     # Plotting
     fig = Figure()
