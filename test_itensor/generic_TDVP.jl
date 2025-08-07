@@ -1,5 +1,5 @@
 using ITensors, ITensorMPS, GLMakie, FFTW
-using Sunny
+using Sunny, Serialization
 
 #Decide where you want these to actually be included
 include("sunny_toITensor.jl")
@@ -9,6 +9,19 @@ include("overloaded_intensities.jl")
 include("CorrelationMeasuring.jl")
 
 
+#Serialization functions for saving G
+
+function save_object(obj, filename)
+    open(filename, "w") do io
+        serialize(io, obj)
+    end
+end
+
+function load_object(filename)
+    open(filename, "r") do io
+        deserialize(io)
+    end
+end
 
 #################
 # Core Functions #
@@ -75,117 +88,117 @@ function Get_Structure_factor()
     N = 20
     # Time evolution parameters
     η = 0.1
-    tstep = 0.5
-    tmax = 5.0
+    tstep = 0.2
+    tmax = 10.0
+    ts = 0.0:tstep:tmax
+    Lt = length(ts)
     cutoff = 1E-10
     maxdim = 300  
 
-    # RUN DMRG from Sunny
-    custom_dmrg_config = DMRGConfig(
-        15,                     # nsweeps
-        [10, 20, 100, 100, 200], # maxdim
-        [1E-10],               # cutoff
-        (0.0,)                 # noise
+    #Fourier transform params
+    new_allowed_qs = (2π/N) * (0:(N-1))
+    allowed_qs = 0:(1/N):2π
+    FT_params = (
+        allowed_qs = allowed_qs,
+        energies = range(0, 5, 500),
+        positions = 1:N,
+        c = div(N, 2),
+        ts = ts,
+    )
+    #Linear prediciton params: n_predict is the number of future time steps to predict, 
+    # n_coeff is the number of coefficients used in linear prediction
+    linear_predict_params = (
+        n_predict = 0,
+        n_coeff = 0
     )
 
+    #Create system 
+    sys = create_chain_system(N; periodic_bc = false)
     
-    sys = create_chain_system(N; periodic_bc = true)
-    DMRG_results = calculate_ground_state(sys)
-    ψ = DMRG_results.psi
-    H = DMRG_results.H
-    sites = DMRG_results.sites
+    # File to save/load G array
+    g_filename = "G_array_$(N)sites_$(tmax)tmax.jls"
 
-    # Prepare time evolution
-    ts = 0.0:tstep:tmax
-    N_timesteps = size(ts,1)
-    c = div(N, 2)
-    ϕ = apply_op(ψ, "Sz", sites, c)  # Excited state
-
-    # Compute correlation function using TDVP
-    G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
-    energies = range(0, 5, N_timesteps)
-    positions = 1:N
-    println("energies size: ", size(energies))
-
-    # Generate linearly spaced q-points and intensities params
-    cryst = sys.crystal
-    qs = [[0,0,0], [1,0,0]]
-    path = q_space_path(cryst, qs, 401)
-
-    integrated = false #decides which method to do
-    manual_ft = false # Set to true to use manual Fourier transform
-    manual_plot = false # Now truly independent of manual_ft
-    
-    if integrated
-        # Using SampledCorrelations Augmentation (INTEGRATED WAY)
-        sc = Get_StructureFactor_with_Sunny(G, energies, sys)
-        res = Sunny.intensities(sc, path; energies = :available, kT=nothing)
-        fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain Integrated", saturation=0.5)
+    # Try to load G if file exists
+    if isfile(g_filename)
+        println("Loading G array from $g_filename")
+        G = load_object(g_filename) 
     else
-        # UNINTEGRATED WAY USING QuantumCorrelations
-        qc = QuantumCorrelations(sys; 
-                            measure = ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
-                            energies=energies)
+        # Compute G if file doesn't exist
+        custom_dmrg_config = DMRGConfig(
+            15,                     # nsweeps
+            [10, 20, 100, 100, 200], # maxdim
+            [1E-10],               # cutoff
+            (0.0,)                 # noise
+        )
+        DMRG_results = calculate_ground_state(sys)
+        ψ = DMRG_results.psi
+        H = DMRG_results.H
+        sites = DMRG_results.sites
+        ϕ = apply_op(ψ, "Sz", sites, c)
 
-        prefft_buf = add_sample!(qc,G)
-        #prefft_buf contains samplebuf before fourier transforming so manual ft can be applied
-        obs_idx = 3
-        corr_idx = 1
-        y_idx = 1    
-        z_idx = 1    
-        pos_idx = 1  
-        new_allowed_qs = (2π/N) * (0:(N-1))
-        allowed_qs = 0:(1/N):2π
-        if manual_ft
-            # Manual Fourier transform code here using compute_S
-            buf_slice = prefft_buf[obs_idx, :, y_idx, z_idx, pos_idx, :]
-            out = compute_S_v2(new_allowed_qs, energies, buf_slice, positions, c, ts) 
-            println("size out", size(out))
-            q_max = min(size(out,1), size(qc.data,4))
-            ω_max = min(size(out,2), size(qc.data,7))
-            qc.data[corr_idx, 1, 1, 1:q_max, y_idx, z_idx, 1:ω_max] .= out[1:q_max, 1:ω_max]
-        end
-
-        # Now independent plotting section
-        if manual_plot
-            # Extract the data we want to plot
-            if manual_ft
-                # Use Compute_S and plot manually
-                plot_data = out
-            else
-                #use accum_sample but plot manually
-                data_slice = qc.data[corr_idx, 1, 1, :, y_idx, z_idx, :]
-                plot_data = real(data_slice)
-            end
-
-            # Create the figure
-            fig = Figure()
-            ax = Axis(fig[1, 1],
-                    xlabel = "qₓ",
-                    xticks = ([0, 2π], ["0", "2π"]),
-                    ylabel = "Energy (meV)",
-                    title = "S=1/2 AFM DMRG/LLD for Chain lattice")
-
-            # Create heatmap
-            vmax = 0.4 * maximum(plot_data)
-            hm = heatmap!(ax, allowed_qs, energies, plot_data,
-                        colorrange = (0, vmax),
-                        colormap = :viridis)
-
-            # Add colorbar
-            cbar = Colorbar(fig[1, 2], hm,
-                        label = "Intensity (a.u.)",
-                        vertical = true)
-
-            ylims!(ax, 0, 5)
-        else
-            # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
-            res = intensities(qc, path; energies = :available, kT=nothing)
-            fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain with intensities()", saturation=0.9)
-        end
+        println("Computing G array...")
+        G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
+        
+        # Save the computed G array
+        save_object(G, g_filename)
+        println("Saved G array to $g_filename")
     end
-    return fig
+
+    #If False: Intensities()
+    manual_plot = true  
+
+    # UNINTEGRATED WAY USING QuantumCorrelations
+    qs_length = length(FT_params.allowed_qs)
+    energies_length = length(FT_params.energies) #energies after FT 
+    qc = QuantumCorrelations(sys, qs_length, energies_length ; 
+                        measure = ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
+                        initial_energies = range(0, 5, length(ts))
+                        )
+
+    add_sample!(qc, G, FT_params, linear_predict_params)
+   
+    if manual_plot
+        # Now independent plotting section
+        # Extract the data we want to plot
+        corr_idx = 1 #Correlation pair corresponding to SzSz in this case
+        y_idx = 1  # fix y-coordinate if 1 system
+        z_idx = 1  # fix z-coordinate if 2D system
+        pos_idx = 1  #atom in unit cell
+        data_slice = qc.data[corr_idx, pos_idx, pos_idx, :, y_idx, z_idx, :]
+        plot_data = real(data_slice)
+        # Create the figure
+        fig = Figure()
+        ax = Axis(fig[1, 1],
+                xlabel = "qₓ",
+                xticks = ([0, allowed_qs[end]], ["0", "2π"]),
+                ylabel = "Energy (meV)",
+                title = "S=1/2 AFM DMRG manual plot for Chain lattice")
+
+        # Create heatmap
+        vmax = 0.4 * maximum(plot_data)
+        hm = heatmap!(ax, allowed_qs, FT_params.energies, plot_data,
+                    colorrange = (0, vmax),
+                    colormap = :viridis)
+
+        # Add colorbar
+        cbar = Colorbar(fig[1, 2], hm,
+                    label = "Intensity (a.u.)",
+                    vertical = true)
+
+        ylims!(ax, 0, 5)
+    else
+        # Generate linearly spaced q-points and intensities params
+        cryst = sys.crystal
+        qs = [[0,0,0], [1,0,0]]
+        path = q_space_path(cryst, qs, 401)
+        # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
+        res = intensities(qc, path; energies = :available, kT=nothing)
+        fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain with intensities()", saturation=0.9)
+    end
+return fig
 end
+
+
 
 # Execute the program
 fig = Get_Structure_factor()
