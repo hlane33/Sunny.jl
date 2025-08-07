@@ -69,6 +69,8 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
 end
 
 function linear_predict(y::Vector{ComplexF64}, n_predict::Int, n_coeff::Int)
+    #n_coeff dictates how many previous values to use for prediction
+    #n_predict is how many future values to predict
     print(y)
     n = length(y)
     print("Length n", n)
@@ -148,7 +150,7 @@ function accum_sample_other!(qc::QuantumCorrelations; window=:cosine)
     positions = 1:Lx
     energies = range(0, 5, 500)
     allowed_qs = 0:(1/Lx):2π
-    new_allowed_qs = (2π/Lx) * (0:(Lx-1))
+    new_allowed_qs = (2π/Lx) * (0:0.5:(Lx-1))
     ts = 0.0:(Lt-1) # Assuming uniform time steps, adjust as needed
     G = samplebuf[obs_idx, :, y_idx, z_idx, 1, :]
     out = compute_S_v2(new_allowed_qs, energies, G, positions, c, ts; n_predict = Lt, n_coeff = div(Lt,2))
