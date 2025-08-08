@@ -21,35 +21,39 @@ end
 # Takes a list of q points, converts into SampledCorrelation.data indices and
 # corresponding exact wave vectors, and eliminates repeated elements.
 function pruned_wave_vector_info(qc::QuantumCorrelations, qs)
+    L_hires = size(qc.data)[4:6]
+    L_phys = size(qc.samplebuf)[2:4]  # Assuming this is correct for your case
 
-    # Round to the nearest wavevector and wrapped index
-    Ls = size(qc.samplebuf)[2:4]
     ms = map(qs) do q 
-        round.(Int, Ls .* q)
+        round.(Int, L_hires .* q)  # Changed from q[1] to q since q is already a 3-vector
     end
-    idcs = map(ms) do m
-        CartesianIndex{3}(map(i -> mod(m[i], Ls[i])+1, (1, 2, 3)))
+    
+    # Two different indices
+    data_idcs = map(ms) do m
+        modded = mod.(m, L_hires) .+ 1
+        CartesianIndex(modded...)  # Creates 3D index from the 3-element tuple
     end
-
-    # Convert to absolute units (for form factors)
-    qabs_rounded = map(m -> qc.crystal.recipvecs * (m ./ qc.sys_dims), ms)
-
-    # List of "starting" pointers i where qabs_rounded[i-1] != qabs_rounded[i],
-    # i.e., indices where the desired wave vector is distinct from the previous
-    # one.
+    
+    pos_idcs = map(ms) do m  
+        hires_idx = mod.(m, L_hires) .+ 1
+        phys_idx = mod.(round.(Int, (hires_idx .- 1) .* L_phys ./ L_hires), L_phys) .+ 1
+        CartesianIndex(phys_idx...)  # Creates 3D index from the 3-element tuple
+    end
+    
+    qabs_rounded = map(m -> qc.crystal.recipvecs * (m ./ L_hires), ms)
+    
+    # NOW CALCULATE COUNTS (same logic as original)
     starts = findall(i -> i == 1 || !isapprox(qabs_rounded[i-1], qabs_rounded[i]), eachindex(qabs_rounded))
-
-    # Length of each run of repeated values
     counts = starts[2:end] - starts[1:end-1]
-    append!(counts, length(idcs) - starts[end] + 1)
-
-    # Remove contiguous repetitions
+    append!(counts, length(data_idcs) - starts[end] + 1)
+    
+    # Remove contiguous repetitions (same as original)
     qabs = qabs_rounded[starts]
-    idcs = idcs[starts]
-
-    return (; qabs, idcs, counts)
+    data_idcs = data_idcs[starts] 
+    pos_idcs = pos_idcs[starts]
+    
+    return (; qabs, data_idcs, pos_idcs, counts)
 end
-
 
 # Crude slow way to find the energy axis index closest to some given energy.
 function find_idx_of_nearest_fft_energy(ref, val)
@@ -93,24 +97,13 @@ end
 
 # Documented under intensities function for LSWT. TODO: As a hack, this function
 # is also being used as the back-end to intensities_static.
-function intensities(qc::QuantumCorrelations, qpts; energies, kernel=nothing, kT)
-    if !isnothing(kT) && kT <= 0
-        error("Positive `kT` required for classical-to-quantum corrections, or set `kT=nothing` to disable.")
-    end
-    if !isnothing(kernel)
-        error("Kernel post-processing not yet available for `QuantumCorrelations`.")
-    end
-
+function intensities(qc::QuantumCorrelations, qpts;kernel=nothing)
     # Determine energy information
-    (ωs, ωidcs) = if energies == :available
-        ωs = available_energies(qc; negative_energies=false)
-        (ωs, axes(ωs, 1))
-    elseif energies == :available_with_negative
-        ωs = available_energies(qc; negative_energies=true)
-        (ωs, axes(ωs, 1))
-    else
-        rounded_energy_information(qc, energies)
-    end
+    n_all_ω = size(qc.data, 7)
+
+    ωs = collect(range(0, 5, length=n_all_ω))  # Custom energy range TODO: remove hard coded max energy
+    ωidcs = 1:length(ωs)  # All frequency indices
+
 
     # Prepare memory and configuration variables for actual calculation
     qpts = Base.convert(AbstractQPoints, qpts)
@@ -135,49 +128,40 @@ function intensities(qc::QuantumCorrelations, qpts; energies, kernel=nothing, kT
     # Convert to a q-space density in original (not reshaped) RLU.
     intensities .*= det(qc.crystal.recipvecs) / det(crystal.recipvecs)
 
-    # Post-processing steps for dynamical correlations 
-    if contains_dynamic_correlations(qc) 
-        # Convert time axis to a density.
-        n_all_ω = size(qc.samplebuf, 6)
-        intensities ./= (n_all_ω * qc.Δω)
-
-        # Apply classical-to-quantum correspondence factor for finite kT
-        if !isnothing(kT)
-            # Equivalent to abs(ω/kT) * thermal_prefactor(ω; kT)
-            c2q = [iszero(ω) ? 1 : abs((ω/kT) / (1 - exp(-ω/kT))) for ω in ωs]
-            for i in axes(intensities, 2)
-                intensities[:, i] .*= c2q
-            end
-        end
-    end
+    println("Computed intensities for $(length(qpts.qs)) q-points and $(length(ωs)) frequencies.")
 
     intensities = reshape(intensities, length(ωs), size(qpts.qs)...)
 
-    return if contains_dynamic_correlations(qc) 
-        Intensities(crystal, qpts, collect(ωs), intensities)
-    else
-        StaticIntensities(crystal, qpts, dropdims(intensities; dims=1))
-    end
+
+    return Intensities(crystal, qpts, collect(ωs), intensities)
 end
 
+
+
 function intensities_aux!(intensities, data, crystal, positions, combiner, ff_atoms, q_idx_info, ωidcs, ::Val{NCorr}, ::Val{NPos}) where {NCorr, NPos}
-    (; qabs, idcs, counts) = q_idx_info 
     (; recipvecs) = crystal 
     qidx = 1
-    for (qabs, idx, count) in zip(qabs, idcs, counts)
-        prefactors = prefactors_for_phase_averaging(qabs, recipvecs, view(positions, idx, :), ff_atoms, Val{NCorr}(), Val{NPos}())
+    
+    (; qabs, data_idcs, pos_idcs, counts) = q_idx_info 
+    
+    for (qabs_val, data_idx, pos_idx, count) in zip(qabs, data_idcs, pos_idcs, counts)
+        # Use HIGH-RES q-vector for form factors, but PHYSICAL position for site locations
+        prefactors = prefactors_for_phase_averaging(qabs_val, recipvecs, 
+                                                    view(positions, pos_idx, :), 
+                                                    ff_atoms, Val{NCorr}(), Val{NPos}())
 
-        # Perform phase-averaging over all omega
+        # Perform phase-averaging over all omega using HIGH-RES data index
         for (n, iω) in enumerate(ωidcs)
             elems = zero(SVector{NCorr, ComplexF64})
             for j in 1:NPos, i in 1:NPos
-                elems += (prefactors[i] * conj(prefactors[j])) * SVector{NCorr}(view(data, :, i, j, idx, iω))
+                elems += (prefactors[i] * conj(prefactors[j])) * 
+                            SVector{NCorr}(view(data, :, i, j, data_idx, iω))
             end
-            val = combiner(qabs, elems)
+            val = combiner(qabs_val, elems)
             intensities[n, qidx] = val
         end
 
-        # Copy for repeated q-values
+        # Copy for repeated q-values (high-res q's that map to same physical site)
         for idx in qidx+1:qidx+count-1, n in axes(ωidcs, 1)
             intensities[n, idx] = intensities[n, qidx]
         end
@@ -185,7 +169,4 @@ function intensities_aux!(intensities, data, crystal, positions, combiner, ff_at
         qidx += count
     end
 end
-
-
-
 
