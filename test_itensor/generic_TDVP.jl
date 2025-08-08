@@ -88,22 +88,34 @@ function Get_Structure_factor()
     N = 20
     # Time evolution parameters
     η = 0.1
-    tstep = 0.2
-    tmax = 10.0
+    tstep = 0.5
+    tmax = 5.0
     ts = 0.0:tstep:tmax
     Lt = length(ts)
     cutoff = 1E-10
     maxdim = 300  
 
+    #Create system 
+    sys = create_chain_system(N; periodic_bc = false)
+    cryst = sys.crystal
+    q_ends = [[0,0,0], [1,0,0]]
+    path = q_space_path(cryst, q_ends, 400)
+    qpts = path.qs #qs in SVector 
+    path_qs = [2pi*q[1] for q in qpts]
+    c = div(N, 2)
+    c_frac = (c - 1) / (N - 1)
+    positions = 1:N
+    positions_frac = (positions .- 1) ./ (N - 1)
+
     #Fourier transform params
-    new_allowed_qs = (2π/N) * (0:(N-1))
+    new_allowed_qs = (2pi/N) * (0:(N-1))
     allowed_qs = 0:(1/N):2π
     FT_params = (
-        allowed_qs = allowed_qs,
+        allowed_qs = path_qs,
         energies = range(0, 5, 500),
-        positions = 1:N,
-        c = div(N, 2),
-        ts = ts,
+        positions = positions,
+        c = c,
+        ts = ts
     )
     #Linear prediciton params: n_predict is the number of future time steps to predict, 
     # n_coeff is the number of coefficients used in linear prediction
@@ -112,8 +124,7 @@ function Get_Structure_factor()
         n_coeff = 0
     )
 
-    #Create system 
-    sys = create_chain_system(N; periodic_bc = false)
+
     
     # File to save/load G array
     g_filename = "G_array_$(N)sites_$(tmax)tmax.jls"
@@ -134,7 +145,7 @@ function Get_Structure_factor()
         ψ = DMRG_results.psi
         H = DMRG_results.H
         sites = DMRG_results.sites
-        ϕ = apply_op(ψ, "Sz", sites, c)
+        ϕ = apply_op(ψ, "Sz", sites, FT_params.c)
 
         println("Computing G array...")
         G = compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
@@ -145,7 +156,7 @@ function Get_Structure_factor()
     end
 
     #If False: Intensities()
-    manual_plot = true  
+    manual_plot = false  
 
     # UNINTEGRATED WAY USING QuantumCorrelations
     qs_length = length(FT_params.allowed_qs)
@@ -188,18 +199,15 @@ function Get_Structure_factor()
         ylims!(ax, 0, 5)
     else
         # Generate linearly spaced q-points and intensities params
-        cryst = sys.crystal
-        qs = [[0,0,0], [1,0,0]]
-        path = q_space_path(cryst, qs, 401)
         # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
-        res = intensities(qc, path; energies = :available, kT=nothing)
+        res = intensities(qc, path)
         fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain with intensities()", saturation=0.9)
     end
-return fig
+return fig, res
 end
 
 
 
 # Execute the program
-fig = Get_Structure_factor()
+fig, res = Get_Structure_factor()
 display(fig)
