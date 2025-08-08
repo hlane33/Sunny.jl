@@ -88,18 +88,19 @@ function compute_S(G, qs, ωs, positions, c, ts; linear_predict_params)
 
     # Extend time axis via linear prediction
     if linear_predict_params.n_predict > 0
-        ts = [ts; ts[end] .+ (1:linear_predict_params.n_predict) * (ts[2] - ts[1])]
-        G = similar(G, (size(G,1), length(extended_ts)))
+        extended_ts = [ts; ts[end] .+ (1:linear_predict_params.n_predict) * (ts[2] - ts[1])]
+        extended_G = similar(G, (size(G,1), length(extended_ts)))
         # Extrapolate each spatial point's time series
         for xi in 1:size(G,1)
-            G[xi, :] = linear_predict(G[xi, :]; linear_predict_params...)
+            extended_G[xi, :] = linear_predict(G[xi, :]; linear_predict_params...)
         end
+
+        G = extended_G
+        ts = extended_ts
+        println("Applied linear prediction with n_predict=$(linear_predict_params.n_predict)")
     end
 
-    #cosine windowing
-    window_func = cos.(range(0, π, length=length(ts))).^ 2
-    G .*= window_func'  # Apply to all spatial sites
-    out = zeros(Float64, length(qs), length(ωs))
+    
     for (qi, q) ∈ enumerate(qs)
         for (ωi, ω) ∈ enumerate(ωs)
             sum_val = 0.0
@@ -120,19 +121,15 @@ function compute_S_v2(G, qs, ωs, positions, c, ts; linear_predict_params)
     
     # Extend time axis via linear prediction
     if linear_predict_params.n_predict > 0
-        ts = [ts; ts[end] .+ (1:linear_predict_params.n_predict) * (ts[2] - ts[1])]
+        extended_ts = [ts; ts[end] .+ (1:linear_predict_params.n_predict) * (ts[2] - ts[1])]
         extended_G = similar(G, (size(G,1), length(ts)))
         # Extrapolate each spatial point's time series
         for xi in 1:size(G,1)
             extended_G[xi, :] = linear_predict(G[xi, :]; linear_predict_params...)
         end
-
+        ts = extended_ts
         G = extended_G
     end
-
-    #cosine windowing
-    window_func = cos.(range(0, π, length=length(ts))).^ 2
-    G .*= window_func'  # Apply to all spatial sites
 
     # Compute Fourier transform on extended data
     for (qi, q) in enumerate(qs)
@@ -164,7 +161,7 @@ function accum_sample_other!(qc::QuantumCorrelations, FT_params, linear_predict_
     #compute S
     G = samplebuf[obs_idx, :, y_idx, z_idx, 1, :]
     println("Shape of G: ", size(G))
-    out = compute_S(G, allowed_qs, energies, positions, c, ts; linear_predict_params)
+    out = compute_S_v2(G, allowed_qs, energies, positions, c, ts; linear_predict_params)
     print("size(out): ", size(out))
     print("size data slice: ", size(data[corr_idx, 1, 1, :, y_idx, z_idx, :]))
     #data slice params 
