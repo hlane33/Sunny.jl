@@ -108,6 +108,12 @@ function main()
     )
 
     sys = create_chain_system(N; periodic_bc = false)
+    cryst = sys.crystal
+    q_ends = [[0,0,0], [1,0,0]]
+    path = q_space_path(cryst, q_ends, 500)
+    qpts = path.qs #qs in SVector 
+    path_qs = [2pi*q[1] for q in qpts]
+
     DMRG_results = calculate_ground_state(sys)
     ψ = DMRG_results.psi
     H = DMRG_results.H
@@ -131,7 +137,7 @@ function main()
     allowed_qs = 0:(1/N):2π
     new_allowed_qs = (2π/N) * (0:(N-1))  # [0, 2π/N, 4π/N, ..., 2π(N-1)/N] - should match sunny_to_itensor?
     positions = 1:N
-    out = compute_S(allowed_qs, energies, G, positions, c, ts; n_predict=n_predict, n_coeff=n_coeff)
+    out = compute_S(path_qs, energies, G, positions, c, ts; n_predict=n_predict, n_coeff=n_coeff)
     print("Shape of out: ", size(out))
 
     # Plotting
