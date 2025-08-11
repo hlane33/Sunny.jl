@@ -87,18 +87,18 @@ function compute_S(G, qs, ωs, positions, c, ts; linear_predict_params)
     out = zeros(Float64, length(qs), length(ωs))
 
     # Extend time axis via linear prediction
+     # Extend time axis via linear prediction
     if linear_predict_params.n_predict > 0
         extended_ts = [ts; ts[end] .+ (1:linear_predict_params.n_predict) * (ts[2] - ts[1])]
-        extended_G = similar(G, (size(G,1), length(extended_ts)))
+        extended_G = zeros(ComplexF64, size(G,1), length(extended_ts))
         # Extrapolate each spatial point's time series
         for xi in 1:size(G,1)
             extended_G[xi, :] = linear_predict(G[xi, :]; linear_predict_params...)
         end
-
-        G = extended_G
         ts = extended_ts
-        println("Applied linear prediction with n_predict=$(linear_predict_params.n_predict)")
+        G = extended_G
     end
+
 
     
     for (qi, q) ∈ enumerate(qs)
@@ -122,7 +122,7 @@ function compute_S_v2(G, qs, ωs, positions, c, ts; linear_predict_params)
     # Extend time axis via linear prediction
     if linear_predict_params.n_predict > 0
         extended_ts = [ts; ts[end] .+ (1:linear_predict_params.n_predict) * (ts[2] - ts[1])]
-        extended_G = similar(G, (size(G,1), length(ts)))
+        extended_G = zeros(ComplexF64, size(G,1), length(extended_ts))
         # Extrapolate each spatial point's time series
         for xi in 1:size(G,1)
             extended_G[xi, :] = linear_predict(G[xi, :]; linear_predict_params...)
