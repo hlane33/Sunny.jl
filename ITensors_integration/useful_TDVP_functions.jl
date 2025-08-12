@@ -89,6 +89,42 @@ function compute_G(N, ψ, ϕ, H, sites, η, ts, tstep, cutoff, maxdim)
     return G
 end
 
+# Serialization functions
+function save_object(obj, filename)
+    open(filename, "w") do io
+        serialize(io, obj)
+    end
+end
+
+function load_object(filename)
+    open(filename, "r") do io
+        deserialize(io)
+    end
+end
+
+function compute_G_wrapper(N, sys, FT_params, η, ts, tstep, cutoff, maxdim, dmrg_config)
+    DMRG_results = calculate_ground_state(sys; dmrg_config=dmrg_config)
+    ψ = DMRG_results.psi
+    H = DMRG_results.H
+    sites = DMRG_results.sites
+    ϕ = apply_op(ψ, "Sz", sites, FT_params.c)
+    return compute_G(N, ψ, ϕ, H, sites, η, collect(ts), tstep, cutoff, maxdim)
+end
+
+function load_G(g_filename, compute_func, compute_args...)
+    if isfile(g_filename)
+        println("Loading G array from $g_filename")
+        return load_object(g_filename)
+    else
+        println("Computing G array...")
+        G = compute_func(compute_args...)
+        save_object(G, g_filename)
+        println("Saved G array to $g_filename")
+        return G
+    end
+end
+
+
 """
     linear_predict(y::Union{Vector{Float64}, Vector{ComplexF64}}; n_predict::Int, n_coeff::Int) -> Vector
 
