@@ -3,11 +3,10 @@ using Sunny
 
 #Decide where you want these to actually be included
 include("sunny_toITensor.jl")
-include("ITensor_to_Sunny.jl")
 include("MeasuredCorrelations.jl")
 include("overloaded_intensities.jl")
 include("CorrelationMeasuring.jl")
-include("useful_functions.jl")
+include("useful_TDVP_functions.jl")
 
 
 units = Units(:meV, :angstrom)
