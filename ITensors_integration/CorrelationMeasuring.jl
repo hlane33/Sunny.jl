@@ -1,6 +1,5 @@
 #Like CorrelationSampling but for MeasuredCorrelations with QuantumCorrelations object
 using LinearAlgebra
-include("useful_functions.jl")
 
 
 function get_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
