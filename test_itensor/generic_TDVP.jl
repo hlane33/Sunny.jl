@@ -85,11 +85,11 @@ end
 function Get_Structure_factor()
     units = Units(:meV, :angstrom)
     # Lattice configuration
-    N = 20
+    N = 15
     # Time evolution parameters
     η = 0.1
-    tstep = 0.5
-    tmax = 5.0
+    tstep = 0.2
+    tmax = 10.0
     ts = 0.0:tstep:tmax
     Lt = length(ts)
     cutoff = 1E-10
@@ -102,11 +102,10 @@ function Get_Structure_factor()
     path = q_space_path(cryst, q_ends, 400)
     qpts = path.qs #qs in SVector 
     path_qs = [2pi*q[1] for q in qpts]
-    c = div(N, 2)
-    c_frac = (c - 1) / (N - 1)
-    positions = 1:N
-    positions_frac = (positions .- 1) ./ (N - 1)
-
+    c = div(N,2)
+    L = div(N,2)
+    positions = 1:N #Enforces symmetry
+    
     #Fourier transform params
     new_allowed_qs = (2pi/N) * (0:(N-1))
     allowed_qs = 0:(1/N):2π
@@ -120,12 +119,11 @@ function Get_Structure_factor()
     #Linear prediciton params: n_predict is the number of future time steps to predict, 
     # n_coeff is the number of coefficients used in linear prediction
     linear_predict_params = (
-        n_predict = 0,
-        n_coeff = 0
+        n_predict = 0, # Half the number of time steps
+        n_coeff = div(Lt,2) # Half the number of coefficients
     )
 
 
-    
     # File to save/load G array
     g_filename = "G_array_$(N)sites_$(tmax)tmax.jls"
 
@@ -201,7 +199,7 @@ function Get_Structure_factor()
         # Generate linearly spaced q-points and intensities params
         # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
         res = intensities(qc, path)
-        fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain with intensities()", saturation=0.9)
+        fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain length $N", saturation=0.9)
     end
 return fig, res
 end
