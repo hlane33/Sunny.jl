@@ -42,12 +42,7 @@ function new_sample!(sc::SampledCorrelations, sys::System)
 
     trajectory!(samplebuf, sys, integrator, nsnaps, observables, atom_idcs; measperiod)
 
-    prefft_buf = copy(samplebuf)
-
-    println("Original: ", pointer(samplebuf))
-    println("Copy: ", pointer(prefft_buf))
-
-    return prefft_buf
+    return nothing
 end
 
 function accum_sample!(sc::SampledCorrelations; window)
@@ -176,10 +171,8 @@ function add_sample!(sc::SampledCorrelations, sys::System; window=:cosine)
     # The hidden option `window=:rectangular` will disable smooth windowing.
     # This may be of interest for extracting real-time dynamical correlations.
 
-    prefft_buf  = new_sample!(sc, sys)
+    new_sample!(sc, sys)
     accum_sample!(sc; window)
-
-    return prefft_buf
 end
 
 function add_sample!(sc::SampledCorrelationsStatic, sys::System; window=:cosine)
