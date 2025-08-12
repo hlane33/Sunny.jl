@@ -1,70 +1,8 @@
 using ITensors, ITensorMPS, Sunny, GLMakie
 
-# Function to visualize the square lattice with GLMakie
-function visualize_square_lattice(Nx::Int, Ny::Int; yperiodic=false)
-    # Generate the lattice
-    lattice = square_lattice(Nx, Ny; yperiodic=yperiodic)
-    
-    # Create figure
-    fig = Figure(resolution=(800, 800))
-    ax = Axis(fig[1, 1], 
-              title="$(Nx)×$(Ny) Square Lattice (yperiodic=$yperiodic)",
-              aspect=DataAspect())
-    
-    # Calculate site coordinates
-    site_coords = [(div(n-1, Ny)+1, mod(n-1, Ny)+1) for n in 1:Nx*Ny]
-    
-    # Plot sites
-    scatter!(ax, Point2f.(site_coords), color=:blue, markersize=30)
-    
-    # Add site number labels
-    for (i, (x, y)) in enumerate(site_coords)
-        text!(ax, "$i", position=Point2f(x, y-0.15), align=(:center, :center), fontsize=20)
-    end
-    
-    # Plot bonds
-    for bond in lattice
-        lines!(ax, [Point2f(bond.x1, bond.y1), Point2f(bond.x2, bond.y2)], 
-               color=:black, linewidth=3)
-    end
-    
-    # Adjust axis limits
-    xlims!(ax, 0.5, Nx+0.5)
-    ylims!(ax, 0.5, Ny+0.5)
-    
-    # Hide axis decorations for cleaner look
-    hidespines!(ax)
-    hidedecorations!(ax)
-    
-    display(fig)
-    return fig
-end
 
 
 
-function plot_lattice(results::DMRGResults; show_crystal=false, coupling_threshold=1e-10)
-    fig = Figure(resolution=(1200, 800))
-    ax = Axis(fig[1, 1], aspect=DataAspect())
-
-    # Get site positions and convert to Point2[]
-    sites = get_site_positions(results.config, results.N_basis)
-    points = [Point2(p[1], p[2]) for p in sites]
-
-    # Plot sites
-    scatter!(ax, points, color=:black, markersize=15)
-
-    # Plot bonds if available
-    if !isempty(results.bond_pairs)
-        for (i, j, J) in results.bond_pairs
-            if abs(J) > coupling_threshold
-                lines!(ax, [points[i], points[j]], color=:blue, linewidth=1)
-            end
-        end
-    end
-
-    display(fig)
-    return fig
-end
 
 """
     honeycomb_lattice(Nx::Int,

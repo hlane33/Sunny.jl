@@ -1,5 +1,10 @@
 using ITensors, ITensorMPS, GLMakie, Sunny
-include("sunny_toITensor.jl")
+
+
+"""
+This code is identical to the code that Harry provided, but slightly restructured.
+It does not use the Sunny integration but rather is just a clean TEBD implementation.
+"""
 
 #################
 # Core Functions #

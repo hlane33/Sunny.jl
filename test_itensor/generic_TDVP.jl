@@ -3,10 +3,10 @@ using Sunny, Serialization
 
 #Decide where you want these to actually be included
 include("sunny_toITensor.jl")
-include("ITensor_to_Sunny.jl")
 include("MeasuredCorrelations.jl")
 include("overloaded_intensities.jl")
 include("CorrelationMeasuring.jl")
+include("useful_functions.jl")
 
 
 #Serialization functions for saving G
@@ -22,61 +22,6 @@ function load_object(filename)
         deserialize(io)
     end
 end
-
-#################
-# Core Functions #
-#################
-
-function apply_op(ϕ::MPS, opname::String, sites, siteidx::Int)
-    ϕ = copy(ϕ) # Make a copy of the original state
-    orthogonalize!(ϕ, siteidx)
-    new_ϕj = op(opname, sites[siteidx]) * ϕ[siteidx]
-    noprime!(new_ϕj)
-    ϕ[siteidx] = new_ϕj
-    return ϕ
-end
-
-function compute_G(N, ψ, ϕ, H, sites, η, ts, tstep, cutoff, maxdim)
-    G = Array{ComplexF64}(undef, N, length(ts))
-    
-    # Initial state measurements
-    for j ∈ 1:N
-        Sjz_ϕ = apply_op(ϕ, "Sz", sites, j)
-        G[j, 1] = inner(ψ, Sjz_ϕ) * exp(-η * 0.0)/π
-    end
-    
-    # Time evolution
-    for (ti, t) in enumerate(ts[2:end])
-        # Evolve both states using TDVP
-        ϕ = tdvp(H, -tstep*im/2, ϕ;
-                time_step=-tstep*im/2,
-                nsteps=1,
-                maxdim, 
-                cutoff,
-                outputlevel=0)
-        
-        ψ = tdvp(H, -tstep*im/2, ψ;
-                time_step=-tstep*im/2,
-                nsteps=1,
-                maxdim, 
-                cutoff,
-                outputlevel=0)
-        
-        normalize!(ϕ)
-        normalize!(ψ)
-        
-        # Measurements
-        for j ∈ 1:N
-            Sjz_ϕ = apply_op(ϕ, "Sz", sites, j)
-            corr = inner(ψ, Sjz_ϕ) * exp(-η * t)/π
-            G[j, ti+1] = corr
-        end
-        println("finished t = $t")
-    end
-    print("Size of G",size(G))
-    return G
-end
-
 
 ################
 # Main Program #
@@ -119,8 +64,8 @@ function Get_Structure_factor()
     #Linear prediciton params: n_predict is the number of future time steps to predict, 
     # n_coeff is the number of coefficients used in linear prediction
     linear_predict_params = (
-        n_predict = 0, # Half the number of time steps
-        n_coeff = div(Lt,2) # Half the number of coefficients
+        n_predict = Lt, # Half the number of time steps
+        n_coeff = 20 # Half the number of coefficients
     )
 
 
@@ -151,10 +96,7 @@ function Get_Structure_factor()
         # Save the computed G array
         save_object(G, g_filename)
         println("Saved G array to $g_filename")
-    end
-
-    #If False: Intensities()
-    manual_plot = false  
+    end 
 
     # UNINTEGRATED WAY USING QuantumCorrelations
     qs_length = length(FT_params.allowed_qs)
@@ -165,47 +107,16 @@ function Get_Structure_factor()
                         )
 
     add_sample!(qc, G, FT_params, linear_predict_params)
-   
-    if manual_plot
-        # Now independent plotting section
-        # Extract the data we want to plot
-        corr_idx = 1 #Correlation pair corresponding to SzSz in this case
-        y_idx = 1  # fix y-coordinate if 1 system
-        z_idx = 1  # fix z-coordinate if 2D system
-        pos_idx = 1  #atom in unit cell
-        data_slice = qc.data[corr_idx, pos_idx, pos_idx, :, y_idx, z_idx, :]
-        plot_data = real(data_slice)
-        # Create the figure
-        fig = Figure()
-        ax = Axis(fig[1, 1],
-                xlabel = "qₓ",
-                xticks = ([0, allowed_qs[end]], ["0", "2π"]),
-                ylabel = "Energy (meV)",
-                title = "S=1/2 AFM DMRG manual plot for Chain lattice")
+    # Generate linearly spaced q-points and intensities params
+    # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
+    res = intensities(qc, path)
+    fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain length $N", saturation=0.9)
 
-        # Create heatmap
-        vmax = 0.4 * maximum(plot_data)
-        hm = heatmap!(ax, allowed_qs, FT_params.energies, plot_data,
-                    colorrange = (0, vmax),
-                    colormap = :viridis)
-
-        # Add colorbar
-        cbar = Colorbar(fig[1, 2], hm,
-                    label = "Intensity (a.u.)",
-                    vertical = true)
-
-        ylims!(ax, 0, 5)
-    else
-        # Generate linearly spaced q-points and intensities params
-        # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
-        res = intensities(qc, path)
-        fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain length $N", saturation=0.9)
-    end
-return fig, res
+return fig
 end
 
 
 
 # Execute the program
-fig, res = Get_Structure_factor()
+fig = Get_Structure_factor()
 display(fig)
