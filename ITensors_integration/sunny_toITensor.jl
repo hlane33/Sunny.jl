@@ -1,13 +1,53 @@
 using Sunny, ITensors, ITensorMPS, GLMakie, LinearAlgebra
 
-struct DMRGConfig
+
+#########
+# This code integrates Sunny.jl with ITensors.jl, attempting to interface the two such that
+# it is easy to create the systems using Sunny whilst leveraging the DMRG ability in ITensors
+# The code does this by extracting the bond information from Sunny and processing it appropriately 
+# into ITensor to construct the hamilton and then perform DMRG.
+########
+
+"""
+    DMRGConfig
+
+Configuration parameters for DMRG calculations.
+
+# Fields
+- `nsweeps::Int`: Number of DMRG sweeps to perform
+- `maxdim::Vector{Int}`: Maximum bond dimensions for each sweep
+- `cutoff::Vector{Float64}`: Truncation cutoffs for each sweep  
+- `noise::Tuple{Vararg{Float64}}`: Noise parameters for each sweep
+
+# Example
+```julia
+config = default_dmrg_config()
+config.nsweeps = 15
+config.maxdim = [20, 50, 100]
+```
+"""
+mutable struct DMRGConfig
     nsweeps::Int
     maxdim::Vector{Int}
     cutoff::Vector{Float64}
     noise::Tuple{Vararg{Float64}}
 end
 
-# Structure to hold calculation results for easy access
+"""
+    DMRGResults
+
+Container for DMRG calculation results and associated system information.
+
+# Fields
+- `energy::Float64`: Ground state energy
+- `psi::MPS`: Ground state wavefunction as Matrix Product State
+- `H::MPO`: Hamiltonian as Matrix Product Operator
+- `sites::Vector`: ITensor site indices
+- `bond_pairs::Vector`: List of bond pairs with coupling matrices
+- `N_basis::Int`: Number of basis sites per unit cell
+- `crystal::Any`: Sunny Crystal object
+- `sys::Any`: Sunny System object
+"""
 struct DMRGResults
     energy::Float64
     psi::MPS
@@ -19,12 +59,30 @@ struct DMRGResults
     sys::Any      # Sunny System object
 end
 
+"""
+    default_dmrg_config()
+
+Create default DMRG configuration with reasonable parameters for most calculations.
+
+Returns a `DMRGConfig` with 10 sweeps, bond dimensions [10,20,100,100,200], 
+cutoff 1E-8, and noise schedule (1E-7, 1E-8, 0.0).
+"""
 function default_dmrg_config()
     return DMRGConfig(10, [10, 20, 100, 100, 200], [1E-8], (1E-7, 1E-8, 0.0))
 end
 
 """
-Maps CartesianIndex to 1D label for ITensor indexing.
+    cartind_to_label(cartind, dims, N_basis; perm=nothing)
+
+Convert CartesianIndex to 1D label for ITensor indexing.
+
+# Arguments
+- `cartind::CartesianIndex`: Cartesian index from Sunny system
+- `dims`: System dimensions (Lx, Ly, Lz)
+- `N_basis::Int`: Number of basis sites per unit cell
+- `perm=nothing`: Optional permutation function to apply to result
+
+Maps a 4D CartesianIndex (i,j,k,basis) to a linear site index suitable for ITensor.
 """
 function cartind_to_label(cartind::CartesianIndex, dims, N_basis; perm=nothing)
     i, j = cartind[1], cartind[2]
@@ -36,6 +94,21 @@ function cartind_to_label(cartind::CartesianIndex, dims, N_basis; perm=nothing)
     perm === nothing ? n : perm(n)
 end
 
+"""
+    get_unique_bonds(sys)
+
+Extract unique bond pairs and coupling matrices from a Sunny system.
+
+# Arguments
+- `sys::System`: Inhomogeneous Sunny system
+
+Returns a tuple `(bond_pairs, N_basis)` where `bond_pairs` contains tuples of 
+`(site_i, site_j, coupling_matrix)` and `N_basis` is the number of basis sites.
+
+# Notes
+The system must be inhomogeneous. Scalar couplings are converted to 3×3 diagonal matrices.
+Culled bonds are automatically filtered out.
+"""
 function get_unique_bonds(sys::System)
     Sunny.is_homogeneous(sys) && error("Use `to_inhomogeneous` first.")
     ints = Sunny.interactions_inhomog(sys)
@@ -72,7 +145,20 @@ function get_unique_bonds(sys::System)
 end
 
 """
-Builds the ITensor Hamiltonian from processed bond pairs.
+    build_hamiltonian_from_bonds(bond_pairs, sys; conserve_qns=true)
+
+Build ITensor Hamiltonian MPO from processed bond pairs.
+
+# Arguments
+- `bond_pairs`: Vector of `(site_i, site_j, coupling_matrix)` tuples
+- `sys::System`: Sunny system (used for size information)
+- `conserve_qns::Bool=true`: Whether to conserve quantum numbers (total Sz)
+
+Returns `(H, sites)` where `H` is the Hamiltonian MPO and `sites` are the physical indices.
+
+# Notes
+When `conserve_qns=false`, 
+includes all off-diagonal coupling terms that break Sz conservation.
 """
 function build_hamiltonian_from_bonds(bond_pairs, sys::System; conserve_qns=true)
     # Calculate total number of sites
@@ -82,7 +168,6 @@ function build_hamiltonian_from_bonds(bond_pairs, sys::System; conserve_qns=true
     sites = siteinds("S=1/2", N; conserve_qns=conserve_qns)
     
     os = OpSum()
-    #Currently only does nearest neighbour coupling
     for (i, j, coupling) in bond_pairs
         print("Processing bond pair ($i, $j) with coupling:  $coupling\n")
         # Extract coupling matrix elements
@@ -117,7 +202,11 @@ function build_hamiltonian_from_bonds(bond_pairs, sys::System; conserve_qns=true
 end
 
 """
-Creates initial state for DMRG.
+    create_AFM_state(sites, sys)
+
+Create antiferromagnetic initial state for DMRG.
+
+Alternates spins up/down for each site. Used as initial guess when quantum numbers are conserved.
 """
 function create_AFM_state(sites, sys::System)
     N = length(sites)
@@ -126,7 +215,16 @@ function create_AFM_state(sites, sys::System)
 end
 
 """
-Performs DMRG calculation.
+    run_dmrg(H, psi0, dmrg_config)
+
+Perform DMRG calculation with given Hamiltonian and initial state.
+
+# Arguments
+- `H`: Hamiltonian as ITensor MPO
+- `psi0`: Initial state as ITensor MPS  
+- `dmrg_config::DMRGConfig`: DMRG parameters
+
+Returns `(energy, psi)` where `energy` is the ground state energy and `psi` is the converged MPS.
 """
 function run_dmrg(H, psi0, dmrg_config::DMRGConfig)
     energy, psi = dmrg(H, psi0; 
@@ -138,11 +236,36 @@ function run_dmrg(H, psi0, dmrg_config::DMRGConfig)
 end
 
 """
-Main DMRG calculation function - works with any Sunny system.
-Takes a pre-constructed Sunny system and runs DMRG on it.
+    calculate_ground_state(sys; kwargs...)
+
+Main DMRG calculation function for any Sunny system.
+
+# Arguments
+- `sys::System`: Pre-constructed inhomogeneous Sunny system
+
+# Keyword Arguments
+- `dmrg_config::DMRGConfig=default_dmrg_config()`: DMRG parameters
+- `conserve_qns::Bool=true`: Whether to conserve total Sz quantum number
+- `linkdims::Int=10`: Bond dimension for random initial state (when `conserve_qns=false`)
+- `show_crystal::Bool=false`: Whether to display crystal structure
+
+Returns a `DMRGResults` object containing the ground state energy, wavefunction, 
+and all associated system information.
+
+# Example
+```julia
+sys = create_square_system(4, 4; J1=1.0, J2=0.2)
+results = calculate_ground_state(sys; conserve_qns=true)
+println("Ground state energy: ", results.energy)
+```
+
+# Notes
+The input system must be inhomogeneous (use `to_inhomogeneous(sys)` if needed).
+When `conserve_qns=true`, uses antiferromagnetic initial state. When `false`, 
+uses random initial state and includes all coupling terms.
 """
-function calculate_ground_state(sys::System, 
-                               dmrg_config::DMRGConfig = default_dmrg_config();
+function calculate_ground_state(sys::System;
+                               dmrg_config::DMRGConfig = default_dmrg_config(),
                                conserve_qns::Bool = true,
                                linkdims::Int = 10,
                                show_crystal::Bool = false)
@@ -187,197 +310,4 @@ function calculate_ground_state(sys::System,
     
     return results
 end
-
-# ============================================================================
-# HELPER FUNCTIONS FOR CONSTRUCTING COMMON LATTICE TYPES 
-# JUST HELPS ME WHEN TESTING, COULD FEASIBLY DO ANY LATTICE
-# ============================================================================
-
-"""
-Helper function to create a triangular lattice system.
-"""
-function create_triangular_system(Lx::Int, Ly::Int, Lz::Int=1; 
-                                 a::Float64=1.0, s::Float64=0.5, 
-                                 J1::Float64=1.0, J2::Float64=0.0,
-                                 periodic_bc::Bool=false)
-    
-    # Create crystal
-    latvecs = lattice_vectors(a, a, 1.0, 90, 90, 120)
-    crystal = Crystal(latvecs, [[0, 0, 0]])
-    
-    # Create system
-    pbc = (true, !periodic_bc, true) #if true then not periodic in that direction
-    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
-    
-    # Set exchanges
-    nn_bond = Bond(1, 1, [1, 0, 0])
-    nnn_bond = Bond(1, 1, [2, 0, 0])
-    set_exchange!(sys, J1, nn_bond)
-    set_exchange!(sys, J2, nnn_bond)
-    
-    # Repeat and make inhomogeneous
-    sys = repeat_periodically(sys, (Lx, Ly, Lz))
-    sys_inhom = to_inhomogeneous(sys)
-    remove_periodicity!(sys_inhom, pbc)
-    
-    return sys_inhom
-end
-
-"""
-Helper function to create a square lattice system.
-"""
-function create_square_system(Lx::Int, Ly::Int, Lz::Int=1; 
-                             a::Float64=1.0, s::Float64=0.5, 
-                             J1::Float64=1.0, J2::Float64=0.0,
-                             periodic_bc::Bool=false)
-    
-    # Create crystal
-    latvecs = lattice_vectors(a, a, 1.0, 90, 90, 90)
-    crystal = Crystal(latvecs, [[0, 0, 0]])
-    
-    # Create system
-    pbc = (true, !periodic_bc, true)
-    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
-    
-    # Set exchanges
-    nn_bond = Bond(1, 1, [1, 0, 0])
-    nnn_bond = Bond(1, 1, [1, 1, 0])
-    set_exchange!(sys, J1, nn_bond)
-    set_exchange!(sys, J2, nnn_bond)
-    
-    # Repeat and make inhomogeneous
-    sys = repeat_periodically(sys, (Lx, Ly, Lz))
-    sys_inhom = to_inhomogeneous(sys)
-    remove_periodicity!(sys_inhom, pbc)
-    
-    return sys_inhom
-end
-
-"""
-Helper function to create a 1D chain system.
-"""
-function create_chain_system(Lx::Int; 
-                            a::Float64=1.0, s::Float64=0.5, 
-                            J1::Float64=1.0, J2::Float64=0.0,
-                            periodic_bc::Bool=false)
-    
-   # Create crystal
-    latvecs = lattice_vectors(a, 10*a, 10*a, 90, 90, 90)
-    crystal = Crystal(latvecs, [[0, 0, 0]])
-    
-    # Create system
-    pbc = (!periodic_bc, true, true)
-    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole; dims=(Lx,1,1))
-    
-    # Set exchanges
-    nn_bond = Bond(1, 1, [1, 0, 0])
-    nnn_bond = Bond(1, 1, [2, 0, 0])
-    set_exchange!(sys, J1, nn_bond)
-    set_exchange!(sys, J2, nnn_bond)
-    
-    # Repeat and make inhomogeneous
-    sys_inhom = to_inhomogeneous(sys)
-    remove_periodicity!(sys_inhom, pbc)
-    
-    return sys_inhom
-end
-
-"""
-Helper function to create a honeycomb lattice system.
-"""
-function create_honeycomb_system(Lx::Int, Ly::Int, Lz::Int=1; 
-                                a::Float64=2.46, s::Float64=0.5, 
-                                J1::Float64=1.0, J2::Float64=0.0,
-                                periodic_bc::Bool=false)
-    
-    # Create crystal
-    latvecs = lattice_vectors(a, a, 10.0, 90, 90, 120)
-    positions = [[1/3, 2/3, 0]]
-    crystal = Crystal(latvecs, positions, 191)
-    
-    # Create system
-    pbc = (true, !periodic_bc, true)
-    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
-    
-    # Set exchanges
-    nn_bond = Bond(1, 2, [0, 0, 0])    # A to B in same cell
-    nnn_bond = Bond(1, 1, [1, 0, 0])   # A-A connections
-    set_exchange!(sys, J1, nn_bond)
-    set_exchange!(sys, J2, nnn_bond)
-    
-    # Repeat and make inhomogeneous
-    sys = repeat_periodically(sys, (Lx, Ly, Lz))
-    sys_inhom = to_inhomogeneous(sys)
-    remove_periodicity!(sys_inhom, pbc)
-    
-    return sys_inhom
-end
-
-function create_dimerized_spin_chain(Lx::Int=4, Ly::Int=1, Lz::Int=1;
-                                      a::Float64=2.46, s::Float64=0.5,
-                                      J1::Float64=1.0, J2::Float64=0.0,
-                                      delta::Float64=0.04,
-                                      periodic_bc::Bool=false)
-    
-    # Spin chain system with Spin 1/2 frustrated system that mimics https://arxiv.org/pdf/2507.19412v1
-    # Using J1-J2 δ dimerized chain model
-    
-    # For a proper dimerized chain, we need a 4-site unit cell to capture the alternating pattern
-    # Unit cell: A-B-A-B with alternating strong/weak bonds
-    # Strong bonds: A(1)-B(2) and A(3)-B(4) 
-    # Weak bonds: B(2)-A(3) and B(4)-A(1+1) (next unit cell)
-
-    # Lattice vectors (monoclinic, P2₁/m)
-    a = 2.0  # doubled due to dimerization
-    b = 1.0  # arbitrary
-    c = 1.0  # arbitrary
-    β = 90.0 # monoclinic angle
-    γ = 95.0 # monoclinic angle
-    latvecs = lattice_vectors(a, b, c, β, γ, β) # Simple orthorhombic for simplicity
-
-    # Atomic positions (2 spins per cell)
-    positions = [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0]]  # in fractional coordinates
-    types = ["Cu","Cu"]  # Assuming spin-1/2 Cu²⁺ ions
-    cryst = Crystal(latvecs, positions; types)  # 11 = P2₁/m space group number
-
-    # Spin properties (e.g., S=1/2, g=2)
-    S = 1/2
-    g = 2.0
-    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole; dims=(Lx,1,1))  # 1x1x1 supercell (minimal for dimerization)
-
-    # Exchange interactions (J₁ ± δ)
-    J1 = 1.0   # Average nearest-neighbor coupling
-    J2 = 0.2  # Example value
-    δ = 0.04   # Dimerization parameter
-    J1_strong = J1 + δ
-    J1_weak = J1 - δ
-
-    # Set alternating bonds along a-axis
-    set_exchange!(sys, J1_strong, Bond(1, 2, [0,0,0]))  # Intra-cell strong bond
-    set_exchange!(sys, J1_weak, Bond(2, 1, [1,0,0]))    # Inter-cell weak bond (PBC wraps)
-
-    # Optional: Add J₂ (next-nearest-neighbor)
-    
-    set_exchange!(sys, J2, Bond(1, 1, [1,0,0]))  # J₂ couples spin 1 to itself in next cell
-    set_exchange!(sys, J2, Bond(2, 2, [1,0,0]))
-    # Visualize the crystal structure
-    fig = view_crystal(sys; ndims=2)
-    display(fig)
-    
-    # Convert to inhomogeneous system
-    sys_inhom = to_inhomogeneous(sys)
-    
-    # Set boundary conditions
-    # Remove periodicity in x-direction (chain direction) only
-    pbc = (!periodic_bc, true, true)  # (x, y, z) - remove periodicity in x
-    remove_periodicity!(sys_inhom, pbc)
-    println("Applied open boundary conditions in chain direction")
-
-    println("Using periodic boundary conditions")
-
-    
-    return sys_inhom
-end
-
-
 
