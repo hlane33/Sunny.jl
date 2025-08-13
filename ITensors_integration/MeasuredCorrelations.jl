@@ -1,10 +1,35 @@
 using Sunny: MeasureSpec, num_correlations, num_observables
+
+
+#######
+#This file mimics Sunny.SampledCorrelations but creates an alternate QuantumCorrelations Object that 
+# adjusts for quantum correlations rather than classical
+######
+
+"""
+    QuantumCorrelations
+
+Container for dynamical structure factor data 𝒮^{αβ}(q,ω) computed from quantum trajectories.
+
+# Fields
+- `data::Array{ComplexF64,7}`: Raw structure factor (ncorrs × natoms × natoms × sys_dims × nω)
+- `crystal::Crystal`: Crystal structure for q-space interpretation
+- `origin_crystal::Union{Nothing,Crystal}`: Original crystal before any transformations
+- `Δω::Float64`: Energy step size
+- `measure::MeasureSpec`: Measurement specification (mutable for combiner updates)
+- `observables`: Operator definitions (nobs × npos × latsize)
+- `positions::Array{Vec3,4}`: Fractional coordinates of operators
+- `atom_idcs::Array{Int64,4}`: Atom indices for observable positions
+- `corr_pairs::Vector{NTuple{2,Int}}`: Correlation component pairs
+- `nsamples::Int64`: Accumulated sample count
+- `samplebuf::Array{ComplexF64,6}`: Observable buffer (nobservables × sys_dims × natoms × nsnapshots)
+- `corrbuf::Array{ComplexF64,4}`: Correlation buffer (sys_dims × nω)
+"""
 mutable struct QuantumCorrelations
     # 𝒮^{αβ}(q,ω) data and metadata
     const data           :: Array{ComplexF64, 7}                 # Raw SF with sublattice indices (ncorrs × natoms × natoms × sys_dims × nω)
     const crystal        :: Crystal                              # Crystal for interpretation of q indices in `data`
     const origin_crystal :: Union{Nothing,Crystal}               # Original user-specified crystal (if different from above)
-    const Δω             :: Float64                              # Energy step size 
 
     # Observable information
     measure            :: MeasureSpec                            # Storehouse for combiner. Mutable so combiner can be changed.
@@ -18,10 +43,6 @@ mutable struct QuantumCorrelations
     # Buffers and precomputed data 
     const samplebuf    :: Array{ComplexF64, 6}                   # Buffer for observables (nobservables × sys_dims × natoms × nsnapshots)
     const corrbuf      :: Array{ComplexF64, 4}                   # Buffer for correlations (sys_dims × nω)
-    const space_fft!   :: FFTW.AbstractFFTs.Plan                 # Pre-planned lattice FFT for samplebuf
-    const time_fft!    :: FFTW.AbstractFFTs.Plan                 # Pre-planned time FFT for samplebuf
-    const corr_fft!    :: FFTW.AbstractFFTs.Plan                 # Pre-planned time FFT for corrbuf 
-    const corr_ifft!   :: FFTW.AbstractFFTs.Plan                 # Pre-planned time IFFT for corrbuf 
 end
 
 function Base.getproperty(qc::QuantumCorrelations, sym::Symbol)
@@ -39,72 +60,46 @@ function Base.setproperty!(qc::QuantumCorrelations, sym::Symbol, val)
 end
 
 """
-    clone_correlations(qc::QuantumCorrelations)
+    to_reshaped_rlu(qc::QuantumCorrelations, q)
 
-Create a copy of a `QuantumCorrelations`.
+Convert q-vector from original to reshaped reciprocal lattice units.
 """
-function clone_correlations(qc::QuantumCorrelations)
-    dims = size(qc.data)[2:4]
-    # Avoid copies/deep copies of C-generated data structures
-    space_fft! = 1/√prod(dims) * FFTW.plan_fft!(qc.samplebuf, (2,3,4))
-    time_fft! = FFTW.plan_fft!(qc.samplebuf, 6)
-    corr_fft! = FFTW.plan_fft!(qc.corrbuf, 4)
-    corr_ifft! = FFTW.plan_ifft!(qc.corrbuf, 4)
-    M = isnothing(qc.M) ? nothing : copy(qc.M)
-    return QuantumCorrelations(
-        copy(qc.data), qc.crystal, qc.origin_crystal, qc.Δω,
-        deepcopy(qc.measure), copy(qc.observables), copy(qc.positions), copy(qc.atom_idcs), copy(qc.corr_pairs),
-        qc.nsamples,
-        copy(qc.samplebuf), copy(qc.corrbuf), space_fft!, time_fft!, corr_fft!, corr_ifft!
-    )
-end
-
-
 function to_reshaped_rlu(qc::QuantumCorrelations, q)
     orig_cryst = @something qc.origin_crystal qc.crystal
     return qc.crystal.recipvecs \ orig_cryst.recipvecs * q
 end
 
-# Determine a step size and down sampling factor that results in precise
-# satisfaction of user-specified energy values.
-function adjusted_dt_and_downsampling_factor(dt, nω, ωmax)
-    @assert π/dt > ωmax "Desired `ωmax` not possible with specified `dt`. Choose smaller `dt` value."
-
-    # Assume nω is the number of non-negative frequencies and determine total
-    # number of frequency bins.
-    n_all_ω = 2(Int64(nω) - 1)
-
-    # Find downsampling factor for the given `dt` that yields an `ωmax` higher
-    # than or equal to given `ωmax`. Then adjust `dt` down so that specified
-    # `ωmax` is satisfied exactly.
-    Δω = ωmax/(nω-1)
-    measperiod = ceil(Int, π/(dt * ωmax))
-    dt_new = 2π/(Δω*measperiod*n_all_ω)
-
-    # Warn the user if `dt` required drastic adjustment, which will slow
-    # simulations.
-    # if dt_new/dt < 0.9
-    #     @warn "To satisify specified energy values, the step size adjusted down by more than 10% from a value of dt=$dt to dt=$dt_new"
-    # end
-
-    return dt_new, measperiod
-end
-
-
 """
-    QuantumCorrelations(sys::System, ts::LenStepRange, n_predict::Int, n_coeff::Int;
-                             measure=nothing, energies=range(0, 5, length(ts)),
-                             positions=nothing)
+    QuantumCorrelations(sys::System, qs_length::Int, energies_length::Int; measure=nothing, initial_energies=NaN, positions=nothing)
 
-An object to accumulate samples of dynamical pair correlations from a preexisting G obect of quantum trajectories
+Construct a QuantumCorrelations container for accumulating dynamical correlations.
+
+# Arguments
+- `sys::System`: Target spin system
+- `qs_length::Int`: Number of q-points of external grid (qs)
+- `energies_length::Int`: Number of energy bins of external applied energy grid (ωs)
+
+# Keywords
+- `measure=nothing`: Measurement specification (default: `ssf_trace(sys)`)
+- `num_timesteps`: Number of timesteps used to sample G
+- `positions=nothing`: Custom operator positions (default: crystal positions)
+
+# Returns
+- Preallocated `QuantumCorrelations` object with zero-initialized buffers
+
+# Notes
+- Uses manual Fourier transform (no zero-padding needed)
+- Currently the only measure that will work is `ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false`
+- Assumes 1D system for initial implementation - This might be fine if ITensor effectively turns the system 1D??
 """
 function QuantumCorrelations(sys::System, qs_length::Int, energies_length::Int;
-                             measure=nothing, initial_energies=NaN,
+                             measure=ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
+                             num_timesteps::Int,
                              positions=nothing)         
+
     #given that we now use manual FT instead of FFT, zero padding is not needed
     #just have this rather than the longer way in SampledCorrelations.jl
-    n_all_ω = length(initial_energies) # Number of non-negative frequencies, including
-    Δω = initial_energies[2] - initial_energies[1] # Energy step size
+    n_all_ω = num_timesteps #just makes clear the transform from time to energy steps
 
     # Determine the positions of the observables in the MeasureSpec. By default,
     # these will just be the atom indices.
@@ -133,36 +128,35 @@ function QuantumCorrelations(sys::System, qs_length::Int, energies_length::Int;
     #Assumes 1D system
     data = zeros(ComplexF64, num_correlations(measure), npos, npos, qs_length, 1, 1, energies_length)
 
-    # The normalization is defined so that the prod(sys.dims)-many estimates of
-    # the structure factor produced by the correlation conj(space_fft!) *
-    # space_fft! are correctly averaged over. The corresponding time-average
-    # can't be applied in the same way because the number of estimates varies
-    # with Δt. These conventions ensure consistency with this spec:
-    # https://sunnysuite.github.io/Sunny.jl/dev/structure-factor.html
-    space_fft! = 1/√prod(sys.dims) * FFTW.plan_fft!(samplebuf, (2,3,4))
-    time_fft!  = FFTW.plan_fft!(samplebuf, 6)
-    corr_fft!  = FFTW.plan_fft!(corrbuf, 4)
-    corr_ifft! = FFTW.plan_ifft!(corrbuf, 4)
-
     # Initialize nsamples to zero. Make an array so can update dynamically
     # without making struct mutable.
     nsamples = 0 
 
     # Make Structure factor and add an initial sample
     origin_crystal = isnothing(sys.origin) ? nothing : sys.origin.crystal
-    qc = QuantumCorrelations(data, sys.crystal, origin_crystal, Δω,
+    qc = QuantumCorrelations(data, sys.crystal, origin_crystal, 
                              measure, copy(measure.observables), positions, atom_idcs, copy(measure.corr_pairs),
                              nsamples,
-                             samplebuf, corrbuf, space_fft!, time_fft!, corr_fft!, corr_ifft!)
+                             samplebuf, corrbuf)
 
     return qc
 end
 
 function Base.show(io::IO, ::QuantumCorrelations)
     print(io, "QuantumCorrelations")
-    # TODO: Add correlation info?
 end
 
+"""
+    show(io::IO, ::MIME"text/plain", qc::QuantumCorrelations)
+
+Display formatted summary of QuantumCorrelations object.
+
+# Output Includes
+- Memory usage
+- Energy resolution (Δω)
+- Sample count
+- Lattice dimensions
+"""
 function Base.show(io::IO, ::MIME"text/plain", qc::QuantumCorrelations)
     (; crystal, nsamples) = qc
     nω = round(Int, size(qc.data)[7]/2)
@@ -173,6 +167,6 @@ function Base.show(io::IO, ::MIME"text/plain", qc::QuantumCorrelations)
     printstyled(io,"S(q,ω)"; bold=true)
     print(io," | nω = $nω, Δω = $(round(qc.Δω, digits=4))")
     println(io," | $nsamples $(nsamples > 1 ? "samples" : "sample")]")
-    println(io,"Lattice: $sys_dims × $(natoms(crystal))")
+    println(io,"Lattice: $sys_dims × $(Sunny.natoms(crystal))")
 end
 
