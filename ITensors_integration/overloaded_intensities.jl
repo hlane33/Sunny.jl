@@ -1,5 +1,5 @@
 using StaticArrays: SVector
-import Sunny: available_energies, pruned_wave_vector_info,
+import Sunny: pruned_wave_vector_info,
               intensities, Intensities, AbstractQPoints, prefactors_for_phase_averaging
 
 
@@ -7,8 +7,6 @@ import Sunny: available_energies, pruned_wave_vector_info,
 #The functions here overload the functions in Sunny.DataRetreival.jl
 #Not all functions in DataRetreival are necessary in the case of the manual Fourier Transform, those have been removed
 #############
-
-
 
 """
     pruned_wave_vector_info(qc::QuantumCorrelations, qs)
@@ -74,7 +72,7 @@ Compute dynamic structure factor S(q,ω) from quantum correlations.
 """
 function intensities(qc::QuantumCorrelations, energies, qpts;kernel=nothing)
     # Determine energy information
-    n_all_ω = size(qc.data, 7)
+    n_all_ω = size(qc.data, 7) #NO. energies in external energy grid
 
     # Extract min and max from the input energies and create a range with n_all_ω points, to match original time sampling of G
     ω_min, ω_max = extrema(energies)
@@ -92,7 +90,7 @@ function intensities(qc::QuantumCorrelations, energies, qpts;kernel=nothing)
     end
     ffs = qc.measure.formfactors[1, :]
 
-    intensities = zeros(eltype(qc.measure), isnan(qc.Δω) ? 1 : length(ωs), length(qpts.qs)) # N.B.: Inefficient indexing order to mimic LSWT
+    intensities = zeros(eltype(qc.measure), length(ωs), length(qpts.qs)) # N.B.: Inefficient indexing order to mimic LSWT
     q_idx_info = pruned_wave_vector_info(qc, qs_reshaped)
     crystal = @something qc.origin_crystal qc.crystal
     NCorr  = Val{size(qc.data, 1)}()
@@ -131,7 +129,6 @@ Should be almost identical to intensities_aux(SampledCorrelations) save for appl
 - `Val{NCorr}`: Number of correlation components (type-level).
 - `Val{NPos}`: Number of atomic positions (type-level).
 """
-
 function intensities_aux!(intensities, data, crystal, positions, combiner, ff_atoms, q_idx_info, ωidcs, ::Val{NCorr}, ::Val{NPos}) where {NCorr, NPos}
     (; recipvecs) = crystal 
     qidx = 1
