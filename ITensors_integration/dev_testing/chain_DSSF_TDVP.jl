@@ -4,7 +4,7 @@ include("../ITensors_integration.jl")
 ################
 # AFM TDVP Example Chain#
 # This was an example I used for testing to compare with the Sunny integrated method
-# that the /examples/ use since this does the FT and plotting externally although
+# that examples/. uses since this does the FT and plotting externally although
 # Sunny_to_ITensor.jl is used to create the system and then create the Hamiltonian
 ################
 
