@@ -42,6 +42,7 @@ end
     get_trajectory_from_G!(buf, G, nsnaps, observables, atom_idcs)
 
 Load a full trajectory from `G` into buffer `buf` for `nsnaps` time steps.
+Like Sunny.trajectories in CorrelationSampling.jl
 
 # Arguments
 - `buf`: Output buffer (6D array, modified in-place).
@@ -81,7 +82,7 @@ function new_sample!(qc::QuantumCorrelations, G::Array{ComplexF64})
 end
 
 """
-    accum_sample_other!(qc::QuantumCorrelations, FT_params, linear_predict_params; window=:cosine)
+    accum_sample!(qc::QuantumCorrelations, FT_params, linear_predict_params; assume_real_S=false)
 
 Accumulate a sample into `qc.data` after Fourier transform and linear prediction.
 
@@ -91,17 +92,18 @@ Accumulate a sample into `qc.data` after Fourier transform and linear prediction
 - `linear_predict_params`: Parameters for linear prediction.
 
 # Keywords
-- `window`: Windowing function (`:cosine` by default).
+- `assume_real_S`: Bool that changes which FT is used depending on whether a real structure factor S(q,ω) is assumed
 
 # Notes
 - Assumes `sz` is at index 3 in `qc.observables`.
 - Debug prints retained for shape verification.
+- Need to make G slice more flexible
 """
-function accum_sample_other!(qc::QuantumCorrelations, FT_params, linear_predict_params; window=:cosine)
-    (; allowed_qs, energies, positions, c, ts) = FT_params
+function accum_sample!(qc::QuantumCorrelations, FT_params, linear_predict_params; assume_real_S=false)
     (; data, samplebuf) = qc
     
     # Slice params (hardcoded for Sz)
+    # TODO make this flexible so that it can be adjusted based on corr choice
     obs_idx = 3
     corr_idx = 1
     y_idx = 1    
@@ -109,13 +111,18 @@ function accum_sample_other!(qc::QuantumCorrelations, FT_params, linear_predict_
     
     G = samplebuf[obs_idx, :, y_idx, z_idx, 1, :]
     println("Shape of G: ", size(G))
-    out = compute_S_v2(G, allowed_qs, energies, positions, c, ts; linear_predict_params)
+    if assume_real_S
+        out = compute_S(G, FT_params; linear_predict_params)
+    else
+        out = compute_S_complex(G, FT_params; linear_predict_params)
+    end
+
     println("size(out): ", size(out))
     qc.data[corr_idx, 1, 1, :, y_idx, z_idx, :] .= out
 end
 
 """
-    add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}, FT_params, linear_predict_params; window=:cosine)
+    add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}, FT_params, linear_predict_params; assume_real_S::Bool=false)
 
 Process a TDVP trajectory sample through Sunny's infrastructure.
 
@@ -126,15 +133,15 @@ Process a TDVP trajectory sample through Sunny's infrastructure.
 - `linear_predict_params`: Linear prediction parameters.
 
 # Keywords
-- `window`: Windowing function (`:cosine` by default).
+- `assume_real_S`: Bool that changes which FT is used depending on whether a real structure factor S(q,ω) is assumed
 
 # Notes
 1. Injects quantum data via `new_sample!`.
 2. Processes with `accum_sample_other!`.
 """
-function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}, FT_params, linear_predict_params; window=:cosine)
+function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}, FT_params, linear_predict_params; assume_real_S::Bool=false)
     new_sample!(qc, G)
-    accum_sample_other!(qc, FT_params, linear_predict_params; window)
+    accum_sample!(qc, FT_params, linear_predict_params; assume_real_S=assume_real_S)
     println("Quantum TDVP data processed through Sunny's infrastructure")
     return nothing
 end
