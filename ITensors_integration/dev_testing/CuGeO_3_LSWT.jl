@@ -1,5 +1,10 @@
 using ITensors, ITensorMPS, GLMakie, Sunny
-include("sunny_toITensor.jl")
+include("../ITensors_integration.jl")
+
+################
+# CuGeO_3 LSWT 
+# Tests the set up of CuGeO_3 system by applying LSWT
+################
 
 sys = create_dimerized_spin_chain(N; a=4.2, s=0.5, J1=13.79, J2=4.83, periodic_bc=false)
 randomize_spins!(sys)

@@ -1,7 +1,10 @@
 using ITensors, ITensorMPS, Sunny, GLMakie
 
 
-
+#########
+#This is Itensor code that largely follows the examples written in ITensor used to test the DMRG accuracy 
+# of sunny_toITensor using different lattices and periodic boundary conditions.
+#########
 
 
 """
@@ -141,16 +144,16 @@ end
 let
     Nx = 5
     Ny = 5
-    N_basis = 1  # Number of basis states per site (S=1/2)
+    N_basis = 2  # Number of basis states per site (S=1/2)
     N = Nx * Ny*N_basis
     yperiodic = false
     # Initialize the site degrees of freedom.
     sites = siteinds("S=1/2", N; conserve_qns=true)
 
-    # Use the AutoMPO feature to create the 
+    # Use the OpSum feature to create the 
     # next-neighbor Heisenberg model.
     ops = OpSum()
-    lattice = triangular_lattice(Nx, Ny; yperiodic=yperiodic)
+    lattice = honeycomb_lattice(Nx, Ny; yperiodic=yperiodic)
     print(lattice)
     num_bonds = length(lattice)
     println("Number of bonds in the $Nx×$Ny lattice with yperiodic=$yperiodic: $num_bonds")
@@ -196,6 +199,4 @@ let
     println("\nUsing overlap = ", inner(psi, Apply(H, psi)))
 
     println("\nTotal QN of Ground State = ", totalqn(psi))
-
-    return
 end

@@ -1,5 +1,9 @@
-#PLOTTING FUNCTIONS FOR sunny_toITensor - not currently required
-#breaks now due to removal of latticeConfig
+#############
+#Deprecated PLOTTING FUNCTIONS FOR sunny_toITensor - not currently required
+#breaks now due to removal of latticeConfig but could be reconfigured to show lattice sites
+# and neighbour/nearest neighbour bonds between them, useful for making sure the bonding done
+# in sunny_toItensor is correct
+############
 
 """
 Classify bonds by their coupling strength and organize them.
@@ -30,7 +34,6 @@ end
 
 """
 Generates site positions for plotting based on lattice type.
-CORRECTED for honeycomb lattice.
 """
 function get_site_positions(config::LatticeConfig, N_basis)
     if config.lattice_type == CHAIN_1D

@@ -1,12 +1,10 @@
 using ITensors, ITensorMPS, GLMakie, FFTW
 using Sunny
+include("../ITensors_integration.jl")
 
-#Decide where you want these to actually be included
-include("sunny_toITensor.jl")
-include("MeasuredCorrelations.jl")
-include("overloaded_intensities.jl")
-include("CorrelationMeasuring.jl")
-include("useful_TDVP_functions.jl")
+########
+#Harry test -- have left here for posterity but no real functionality
+########
 
 
 units = Units(:meV, :angstrom)
@@ -47,8 +45,8 @@ qc = QuantumCorrelations(sys;
                     measure = ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
                     energies=energies)
 
-prefft_buf = add_sample!(qc,G)
+add_sample!(qc,G)
 
 
-res = intensities(qc, path; energies = :available, kT=nothing)
+res = intensities(qc, path; energies = :available)
 plot_intensities(res; units, title="Dynamic structure factor for 1D chain with qc")
