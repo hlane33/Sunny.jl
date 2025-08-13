@@ -1,31 +1,31 @@
 using StaticArrays: SVector
-import Sunny: available_energies, contains_dynamic_correlations, pruned_wave_vector_info,
-intensities, Intensities, AbstractQPoints, prefactors_for_phase_averaging
-
-# Key compatibility functions for Sunny's intensities interface
-function available_energies(qc::QuantumCorrelations; negative_energies=false)
-    isnan(qc.Δω) && return NaN
-
-    n_all_ω = size(qc.data, 7)
-    n_non_neg_ω = div(n_all_ω, 2) + 1
-    ωvals = collect(FFTW.fftfreq(n_all_ω, n_all_ω * qc.Δω))
-    ωvals[n_non_neg_ω] *= -1  # Adjust for FFTW convention (which is largest frequency negative)
-    return negative_energies ? ωvals : ωvals[1:n_non_neg_ω]
-end
+import Sunny: available_energies, pruned_wave_vector_info,
+              intensities, Intensities, AbstractQPoints, prefactors_for_phase_averaging
 
 
-function contains_dynamic_correlations(qc::QuantumCorrelations)
-    return !isnan(qc.Δω)
-end
+#############
+#The functions here overload the functions in Sunny.DataRetreival.jl
+#Not all functions in DataRetreival are necessary in the case of the manual Fourier Transform, those have been removed
+#############
 
-# Takes a list of q points, converts into SampledCorrelation.data indices and
-# corresponding exact wave vectors, and eliminates repeated elements.
+
+
+"""
+    pruned_wave_vector_info(qc::QuantumCorrelations, qs)
+
+Mimics pruned_wave_vector_info(sc::SampledCorrelations) but adjusts for the fact
+that we want to prune to the external energy/momenta grid the user chooses, not based off the sampling time steps/site positions
+
+Process wave vectors to eliminate duplicates and map to data indices.
+Returns named tuple with `(qabs, data_idcs, pos_idcs, counts)`.
+
+"""
 function pruned_wave_vector_info(qc::QuantumCorrelations, qs)
     L_hires = size(qc.data)[4:6]
-    L_phys = size(qc.samplebuf)[2:4]  # Assuming this is correct for your case
+    L_phys = size(qc.samplebuf)[2:4]  
 
     ms = map(qs) do q 
-        round.(Int, L_hires .* q)  # Changed from q[1] to q since q is already a 3-vector
+        round.(Int, L_hires .* q)  
     end
     
     # Two different indices
@@ -42,7 +42,7 @@ function pruned_wave_vector_info(qc::QuantumCorrelations, qs)
     
     qabs_rounded = map(m -> qc.crystal.recipvecs * (m ./ L_hires), ms)
     
-    # NOW CALCULATE COUNTS (same logic as original)
+    # NOW CALCULATE COUNTS -- Although maybe this is always 1?
     starts = findall(i -> i == 1 || !isapprox(qabs_rounded[i-1], qabs_rounded[i]), eachindex(qabs_rounded))
     counts = starts[2:end] - starts[1:end-1]
     append!(counts, length(data_idcs) - starts[end] + 1)
@@ -55,53 +55,30 @@ function pruned_wave_vector_info(qc::QuantumCorrelations, qs)
     return (; qabs, data_idcs, pos_idcs, counts)
 end
 
-# Crude slow way to find the energy axis index closest to some given energy.
-function find_idx_of_nearest_fft_energy(ref, val)
-    for i in axes(ref[1:end-1], 1)
-        x1, x2 = ref[i], ref[i+1]
-        if x1 <= val <= x2 
-            if abs(x1 - val) < abs(x2 - val)
-                return i
-            else
-                return i+1
-            end
-        end
-    end
-    # Deal with edge case arising due to FFT index ordering
-    if ref[end] <= val <= 0.0
-        if abs(ref[end] - val) <= abs(val)
-            return length(ref)
-        else
-            return 1
-        end
-    end
-    error("Value does not lie in bounds of reference list.")
-end
+"""
+    intensities(qc::QuantumCorrelations, energies, qpts)
 
+Compute dynamic structure factor S(q,ω) from quantum correlations.
 
-# If the user specifies an energy list, round to the nearest available energies
-# and give the corresponding indices into the raw data. This is fairly
-# inefficient, though the cost is likely trivial next to the rest of the
-# computation. Since this is an edge case (user typically expected to choose
-# :available or :available_with_negative), not spending time on optimization
-# now.
-function rounded_energy_information(qc, energies)
-    ωvals = available_energies(qc; negative_energies = true)
-    energies_sorted = sort(energies)
-    @assert all(x -> x ==true, energies .== energies_sorted) "Specified energies must be an ordered list."
-    @assert minimum(energies) >= minimum(ωvals) && maximum(energies) <= maximum(ωvals) "Specified energies includes values for which there is no available data."
-    ωidcs = map(val -> find_idx_of_nearest_fft_energy(ωvals, val), energies)
-    return ωvals[ωidcs], ωidcs
-end
+# Arguments
+- `qc`: QuantumCorrelations container with precomputed data.
+- `energies`: Energy range used on external grid
+- `qpts`: Q-points to evaluate (in reciprocal lattice units).
 
+# Returns
+- `Intensities` object with crystal, q-points, energies, and intensity values.
 
-# Documented under intensities function for LSWT. TODO: As a hack, this function
-# is also being used as the back-end to intensities_static.
-function intensities(qc::QuantumCorrelations, qpts;kernel=nothing)
+# Notes
+- Energy range currently hardcoded (TODO: fix).
+- Form factors must be uniform across observables.
+"""
+function intensities(qc::QuantumCorrelations, energies, qpts;kernel=nothing)
     # Determine energy information
     n_all_ω = size(qc.data, 7)
 
-    ωs = collect(range(0, 5, length=n_all_ω))  # Custom energy range TODO: remove hard coded max energy
+    # Extract min and max from the input energies and create a range with n_all_ω points, to match original time sampling of G
+    ω_min, ω_max = extrema(energies)
+    ωs = collect(range(ω_min, ω_max, length=n_all_ω))  # Now uses the same range as 'energies'
     ωidcs = 1:length(ωs)  # All frequency indices
 
 
@@ -136,7 +113,24 @@ function intensities(qc::QuantumCorrelations, qpts;kernel=nothing)
     return Intensities(crystal, qpts, collect(ωs), intensities)
 end
 
+"""
+    intensities_aux!(intensities, data, crystal, positions, combiner, ff_atoms, q_idx_info, ωidcs, ::Val{NCorr}, ::Val{NPos})
 
+Core intensity calculation kernel (modifies `intensities` in-place). 
+Should be almost identical to intensities_aux(SampledCorrelations) save for application of form factors taking into account other grid
+
+# Arguments
+- `intensities`: Output array (ω × q).
+- `data`: Correlation data from `QuantumCorrelations`.
+- `crystal`: Crystal structure information.
+- `positions`: Atomic positions in unit cell.
+- `combiner`: Function to combine correlation components from Measure Combiner.
+- `ff_atoms`: Form factors per atom.
+- `q_idx_info`: Preprocessed q-vector info from `pruned_wave_vector_info`.
+- `ωidcs`: Indices of energy bins to include.
+- `Val{NCorr}`: Number of correlation components (type-level).
+- `Val{NPos}`: Number of atomic positions (type-level).
+"""
 
 function intensities_aux!(intensities, data, crystal, positions, combiner, ff_atoms, q_idx_info, ωidcs, ::Val{NCorr}, ::Val{NPos}) where {NCorr, NPos}
     (; recipvecs) = crystal 
@@ -169,4 +163,3 @@ function intensities_aux!(intensities, data, crystal, positions, combiner, ff_at
         qidx += count
     end
 end
-

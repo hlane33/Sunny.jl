@@ -379,42 +379,5 @@ function create_dimerized_spin_chain(Lx::Int=4, Ly::Int=1, Lz::Int=1;
     return sys_inhom
 end
 
-# ============================================================================
-#  TEST USAGE
-# ============================================================================
-
-
-"""
-println("=== DMRG Calculation ===")
-
-
-#create Kagome
-Lx = 4
-Ly = 7
-pbc = (true, false, true)
-
-units = Units(:meV, :angstrom)
-latvecs = lattice_vectors(6, 6, 5, 90, 90, 120)
-positions = [[1/2, 0, 0]]
-cryst = Crystal(latvecs, positions, 147)
-sys = System(cryst, [1 => Moment(s=1, g=2)], :dipole)
-J = -1.0
-set_exchange!(sys, J, Bond(2, 3, [0, 0, 0]))
-sys = repeat_periodically(sys, (Lx, Ly, 1))
-sys_inhom = to_inhomogeneous(sys)
-remove_periodicity!(sys_inhom, pbc)
-
-
-
-sys = create_dimerized_spin_chain(2; a=1.0, s=0.5, J1=1.0, J2=0.5, periodic_bc=false)
-
-# Calculate ground state
-
-custom_results = calculate_ground_state(sys; 
-                                      conserve_qns=true,  # Off-diagonal terms break QN conservation
-                                      )
-
-println("END")
-"""
 
 

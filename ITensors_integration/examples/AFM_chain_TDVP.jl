@@ -1,7 +1,7 @@
 using ITensors, ITensorMPS, GLMakie, FFTW
 using Sunny, Serialization
 
-#Decide where you want these to actually be included
+#Loads relevant other code
 include("/Users/adam/Sunny.jl-1/ITensors_integration/ITensors_integration.jl")
 
 
@@ -25,7 +25,6 @@ path = q_space_path(cryst, q_ends, 400)
 qpts = path.qs #qs in SVector 
 path_qs = [2pi*q[1] for q in qpts]
 c = div(N,2)
-L = div(N,2)
 positions = 1:N #Enforces symmetry
 
 #Fourier transform params
@@ -41,7 +40,7 @@ FT_params = (
 #Linear prediciton params: n_predict is the number of future time steps to predict, 
 # n_coeff is the number of coefficients used in linear prediction
 linear_predict_params = (
-    n_predict = Lt, # Half the number of time steps
+    n_predict = 0, # Half the number of time steps
     n_coeff = 20 # Half the number of coefficients
 )
 
@@ -64,7 +63,7 @@ qc = QuantumCorrelations(sys, qs_length, energies_length ;
 add_sample!(qc, G, FT_params, linear_predict_params)
 # Generate linearly spaced q-points and intensities params
 # Standard Sunny plotting with FT done in accum_sample! and plotting by plot_intensities
-res = intensities(qc, path)
+res = intensities(qc, FT_params.energies, path)
 fig = plot_intensities(res; units, title="Dynamic structure factor for 1D chain length $N", saturation=0.9)
 
 display(fig)
