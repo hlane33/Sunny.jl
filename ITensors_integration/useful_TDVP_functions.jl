@@ -11,7 +11,20 @@
 # Parameter structs
 # ----------------------
 
-#Structure to store TDVP Params
+"""
+    TDVPParams
+
+Structure to store parameters for Time-Dependent Variational Principle (TDVP) calculations.
+
+# Fields
+- `N::Int`: System size (number of sites).
+- `η::Float64`: Damping factor or regularization parameter.
+- `tstep::Float64`: Time step for the evolution.
+- `tmax::Float64`: Maximum time for the evolution.
+- `cutoff::Float64`: Singular value cutoff for truncation.
+- `maxdim::Int`: Maximum bond dimension allowed.
+- `periodic_bc::Bool`: Whether to use periodic boundary conditions (default: false).
+"""
 Base.@kwdef struct TDVPParams
     N::Int
     η::Float64
@@ -22,19 +35,40 @@ Base.@kwdef struct TDVPParams
     periodic_bc::Bool = false
 end
 
-#Structure to store params for Fourier transform
+"""
+    FTParams
+
+Structure to store parameters for Fourier transform calculations.
+
+# Fields
+- `allowed_qxs::Vector{Float64}`: Allowed momentum values in x dir(q-vectors).
+- `allowed_qys::Vector{Float64}`: Allowed momentum values in y dir(q-vectors).
+- `energies::AbstractVector{Float64}`: Energy values for the spectrum.
+- `positions::AbstractVector{Int}`: Lattice positions to consider.
+- `c::Int`: Central site or reference position.
+- `ts::AbstractVector{Float64}`: Time points for the time evolution data.
+"""
 Base.@kwdef struct FTParams
-    allowed_qs::Vector{Float64}
-    energies::AbstractVector{Float64}
-    positions::AbstractVector{Int}
+    allowed_qxs::Vector{Float64}
+    allowed_qys::Vector{Float64} = [pi]
     c::Int
-    ts::AbstractVector{Float64}
+    energies::Vector{Float64}
+    positions::Matrix{Float64}  # Real-space positions from Sunny system [3 x Nsites]
+    ts::Vector{Float64}
 end
 
-#Parameters used for linear prediction
+"""
+    LinearPredictParams
+
+Structure to store parameters for linear prediction calculations.
+
+# Fields
+- `n_predict::Int`: Number of points to predict.
+- `n_coeff::Int`: Number of coefficients to use in the prediction.
+"""
 Base.@kwdef struct LinearPredictParams
-    n_predict::Int
-    n_coeff::Int
+    n_predict::Int = 0
+    n_coeff::Int = 0
 end
 
 
@@ -158,6 +192,9 @@ Perform linear prediction using autoregressive modeling.
 
 # Throws
 - `ArgumentError` if input too short for prediction
+
+# Notes
+Using Linear predict does exacerbate the asymmetry found when using [`@ref compute_S_complex`](@ref)
 """
 function linear_predict(y::AbstractVector{T}; n_predict::Int, n_coeff::Int) where {T<:Union{Float64,ComplexF64}}
     length(y) ≤ n_coeff && throw(ArgumentError("Time series shorter than AR order"))
@@ -207,15 +244,19 @@ Compute S(q,ω) via real-space Fourier transform.
 - Performs cosine/sine transforms for real-valued output
 - Optionally extends time series using linear prediction
 - Uses precomputed trigonometric terms for efficiency
+- Extension to 2D would require tracking positions of coordinates in 2D i.e qs becomes an array of 2D momenta
 """
 function compute_S(G::AbstractMatrix{ComplexF64}, ft_params::FTParams; linear_predict_params::LinearPredictParams)
    
 
-    qs = ft_params.allowed_qs
+    qs = ft_params.allowed_qxs
     ωs = ft_params.energies
-    positions = ft_params.positions
+    positions_3D = ft_params.positions
     c = ft_params.c
     ts = ft_params.ts
+
+    #convert positions to just 1D
+    positions = positions_3D[1,:] .+ 1
     
     # Time series extension
     if linear_predict_params.n_predict > 0
@@ -265,18 +306,19 @@ Compute S(q,ω) via complex Fourier transform.
 # Notes
 - Performs complex exponential transforms
 - Optionally extends time series using linear prediction
-- More efficient than real version for complex outputs
+- Only works for 1D chain system
 - Preserves full phase information
 """
 function compute_S_complex(G::AbstractMatrix{ComplexF64}, ft_params::FTParams; linear_predict_params::LinearPredictParams)
-    qs = ft_params.allowed_qs
+    qs = ft_params.allowed_qxs
     ωs = ft_params.energies
     positions = ft_params.positions
     c = ft_params.c
     ts = ft_params.ts
 
     
-    
+    #convert positions to just 1D (The plus one aligns with choice of c in TDPVP)
+    positions = positions[1,:] .+ 1
     # Time series extension
     if linear_predict_params.n_predict > 0
         ts, G = _extend_time_series(ts, G; linear_predict_params)
@@ -309,6 +351,40 @@ function _extend_time_series(ts, G; linear_predict_params::LinearPredictParams)
     end
     
     return extended_ts, extended_G
+end
+
+"""
+    extract_positions_from_sunny(sys::System) -> Matrix{Float64}
+
+Extract real-space positions of all sites from a Sunny system and return them as a 3×N matrix.
+
+# Arguments
+- `sys::System`: A Sunny system object containing crystal structure and site information.
+
+# Returns
+- `pos_matrix::Matrix{Float64}`: A 3×N matrix where each column represents the [x, y, z] coordinates 
+  of a site in real space (Angstroms). N is the total number of sites in the system.
+
+# Notes
+- For 1D or 2D systems, the unused dimensions will be zero filled.
+- Positions start at zero not one, so for a 1D chain pos_matrix[1,:] = [0.0, 1.0, ...]
+
+"""
+function extract_positions_from_sunny(sys)
+    # Get all site positions from the Sunny system
+    # sys.crystal.positions contains fractional coordinates
+    # sys.dims gives the system dimensions
+    
+    positions = []
+    for site in Sunny.eachsite(sys)
+        # Get real-space position for this site
+        r = Sunny.global_position(sys, site)  # Returns [x, y, z] in Angstroms
+        push!(positions, r)
+    end
+    
+    # Convert to matrix format [3 x Nsites] for easier indexing
+    pos_matrix = hcat(positions...)
+    return pos_matrix
 end
 
 #################
@@ -348,6 +424,40 @@ function load_object(filename)
 end
 
 
+
+"""
+    map_G_to_2D(G::AbstractMatrix{ComplexF64}, sys::System, Lt::Int)
+
+Maps a Quantum correlation array from a 1D compressed format to a 5D array representation 
+that matches the system's real-space dimensions and basis structure.
+
+# Arguments
+- `sys::System`: The system object containing crystal and dimension information
+- `Lt::Int`: The number of time slices (or other discrete values in the 5th dimension)
+
+# Returns
+- `G_2D::Array{ComplexF64,5}`: A 5-dimensional array with dimensions (Lx, Ly, Lz, N_basis, Lt)
+  representing the correlation function in real space and orbital basis
+
+# Note
+- The function assumes the existence of global variables `G` (the input Green's function)
+  and `n_to_cartind` (the index mapping dictionary)
+- The input Green's function `G` should have dimensions (N, Lt) where N = Lx × Ly × Lz × N_basis
+"""
+function map_G_to_2D(G::AbstractMatrix{ComplexF64}, sys::System,Lt::Int)
+    Lx, Ly, Lz = sys.dims
+    N_basis = length(sys.crystal.positions)
+    G_2D = zeros(ComplexF64, Lx, Ly, Lz, N_basis, Lt)
+
+    for n in 1:size(G, 1)
+        i, j, k, l = n_to_cartind[n]  # k=1 (2D), l=1 or 2
+        G_2D[i,j,k,l,:] .= G[n,:]
+    end
+
+    return G_2D
+end
+
+
 """
     compute_G_wrapper(sys, tdvp_params, ft_params, linear_predict_params; dmrg_config)
 
@@ -372,22 +482,23 @@ High-level wrapper for computing G matrix with DMRG initialization.
 
 # Returns
 - Computed G matrix (N × length(ts) complex matrix)
+- n_to_cartind (inverse mapping of n --> [i,j,k,l] see [`cartind_to_label`](@ref)
 
 # Notes
 - Uses TDVP time evolution to compute the dynamical correlation function
 - The ϕ state is created by applying Sz operator at central site (ft_params.c)
 """
 function compute_G_wrapper(sys, tdvp_params, ft_params, linear_predict_params; dmrg_config)
-    DMRG_results = calculate_ground_state(sys; dmrg_config)
+    DMRG_results, n_to_cartind = calculate_ground_state(sys; dmrg_config)
     ϕ = apply_op(DMRG_results.psi, "Sz", DMRG_results.sites, ft_params.c)
-
-    return compute_G(tdvp_params, ft_params, DMRG_results.psi, ϕ, DMRG_results.H, DMRG_results.sites)
+    G = compute_G(tdvp_params, ft_params, DMRG_results.psi, ϕ, DMRG_results.H, DMRG_results.sites)
+    return (G, n_to_cartind)  # Return as a tuple to be saved
 end
 
 """
     load_G(g_filename, compute_func, compute_args...; dmrg_config=default_dmrg_config())
 
-Load or compute G matrix with caching.
+Load or compute G matrix and n --> [i,j,k,l] site mapping with caching.
 
 # Arguments
 - `g_filename`: Cache file path
@@ -399,17 +510,18 @@ Load or compute G matrix with caching.
 
 # Returns
 - G matrix (loaded or computed)
+- 
 """
 function load_G(g_filename, compute_func, compute_args...; dmrg_config=default_dmrg_config())
     if isfile(g_filename)
-        @info "Loading cached G from $g_filename"
-        return load_object(g_filename)
+        @info "Loading cached G and n_to_cartind from $g_filename"
+        return load_object(g_filename)  # Returns the tuple (G, n_to_cartind)
     else
-        @info "Computing G matrix..."
-        G = compute_func(compute_args...; dmrg_config)
-        save_object(G, g_filename)
-        @info "Saved G to $g_filename"
-        return G
+        @info "Computing G matrix and n_to_cartind mapping..."
+        result = compute_func(compute_args...; dmrg_config)  # This returns (G, n_to_cartind)
+        save_object(result, g_filename)
+        @info "Saved G and n_to_cartind to $g_filename"
+        return result
     end
 end
 
