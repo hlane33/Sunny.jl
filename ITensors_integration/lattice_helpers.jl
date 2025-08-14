@@ -10,6 +10,8 @@ Create triangular lattice system with nearest and next-nearest neighbor coupling
 
 # Arguments
 - `Lx::Int`, `Ly::Int`, `Lz::Int=1`: System dimensions
+
+#Kwargs
 - `a::Float64=1.0`: Lattice constant  
 - `s::Float64=0.5`: Spin magnitude
 - `J1::Float64=1.0`: Nearest neighbor coupling
@@ -52,6 +54,7 @@ Create square lattice system with nearest and next-nearest neighbor couplings.
 
 # Arguments  
 - `Lx::Int`, `Ly::Int`, `Lz::Int=1`: System dimensions
+#Kwargs
 - `a::Float64=1.0`: Lattice constant
 - `s::Float64=0.5`: Spin magnitude  
 - `J1::Float64=1.0`: Nearest neighbor coupling
@@ -94,6 +97,8 @@ Create 1D spin chain system with nearest and next-nearest neighbor couplings.
 
 # Arguments
 - `Lx::Int`: Chain length
+
+# Kwargs
 - `a::Float64=1.0`: Lattice spacing
 - `s::Float64=0.5`: Spin magnitude
 - `J1::Float64=1.0`: Nearest neighbor coupling  
@@ -135,6 +140,8 @@ Create honeycomb lattice system with nearest and next-nearest neighbor couplings
 
 # Arguments
 - `Lx::Int`, `Ly::Int`, `Lz::Int=1`: System dimensions
+
+#Kwargs
 - `a::Float64=2.46`: Lattice constant  
 - `s::Float64=0.5`: Spin magnitude
 - `J1::Float64=1.0`: Nearest neighbor coupling (A-B sublattices)
@@ -178,6 +185,8 @@ Create dimerized spin chain with alternating bond strengths (J₁±δ model).
 
 # Arguments  
 - `Lx::Int=4`, `Ly::Int=1`, `Lz::Int=1`: System dimensions
+
+#Kwargs
 - `a::Float64=2.46`: Lattice constant
 - `s::Float64=0.5`: Spin magnitude
 - `J1::Float64=1.0`: Average nearest neighbor coupling
@@ -189,6 +198,8 @@ Creates a frustrated spin chain with alternating strong (J₁+δ) and weak (J₁
 Based on the J₁-J₂-δ dimerized chain model.
 
 Returns an inhomogeneous Sunny system ready for DMRG calculation.
+
+NOTES: DOES NOT CURRENTLY WORK
 """
 function create_dimerized_spin_chain(Lx::Int=4, Ly::Int=1, Lz::Int=1;
                                       a::Float64=2.46, s::Float64=0.5,
