@@ -82,7 +82,7 @@ Convert CartesianIndex to 1D label for ITensor indexing.
 - `N_basis::Int`: Number of basis sites per unit cell
 - `perm=nothing`: Optional permutation function to apply to result
 
-Maps a 4D CartesianIndex (i,j,k,basis) to a linear site index suitable for ITensor.
+Maps a 4D CartesianIndex (i,j,1,k) to a linear site index suitable for ITensor.
 """
 function cartind_to_label(cartind::CartesianIndex, dims, N_basis; perm=nothing)
     i, j = cartind[1], cartind[2]
@@ -103,7 +103,8 @@ Extract unique bond pairs and coupling matrices from a Sunny system.
 - `sys::System`: Inhomogeneous Sunny system
 
 Returns a tuple `(bond_pairs, N_basis)` where `bond_pairs` contains tuples of 
-`(site_i, site_j, coupling_matrix)` and `N_basis` is the number of basis sites.
+`(site_i, site_j, coupling_matrix)`, `N_basis` is the number of basis sites,
+n_to_cartind is the mapping from n to [i,j,k,l] to be inverted later.
 
 # Notes
 The system must be inhomogeneous. Scalar couplings are converted to 3×3 diagonal matrices.
@@ -112,19 +113,29 @@ Culled bonds are automatically filtered out.
 function get_unique_bonds(sys::System)
     Sunny.is_homogeneous(sys) && error("Use `to_inhomogeneous` first.")
     ints = Sunny.interactions_inhomog(sys)
+    dims = sys.dims
 
     sites = Sunny.eachsite(sys)
     N_basis = length(sys.crystal.positions)
     bond_pairs = []
     
+    #creates object to save mapping to for inversion after Time evolution
+     n_to_cartind = Vector{NTuple{4, Int}}(undef, prod(dims) * N_basis)  # Maps labelᵢ → (i,j,k,l)
     for (j, int) in enumerate(ints)
         for pc in int.pair
             (; bond, isculled) = pc
+            #saves mapping n --> [i,j,k,l] for all sites
+            siteᵢ = sites[j] 
+            # This mapping doesn't care about the culling
+            label = cartind_to_label(siteᵢ, sys.dims, N_basis)
+            n_to_cartind[label] = (siteᵢ[1], siteᵢ[2], siteᵢ[3], siteᵢ[4])
+
+            # now culls bonds so no double counting
             isculled && continue
-            siteᵢ = sites[j]
             siteⱼ = Sunny.bonded_site(siteᵢ, bond, sys.dims)
         
             # Get linear labels
+            #you care about the bonds here and therefore the culling
             labelᵢ = cartind_to_label(siteᵢ, sys.dims, N_basis)
             labelⱼ = cartind_to_label(siteⱼ, sys.dims, N_basis)
 
@@ -141,7 +152,7 @@ function get_unique_bonds(sys::System)
         end
     end
     println("$(length(bond_pairs)) unique bonds found.")
-    return unique(bond_pairs), N_basis
+    return unique(bond_pairs), N_basis, n_to_cartind
 end
 
 """
@@ -169,7 +180,7 @@ function build_hamiltonian_from_bonds(bond_pairs, sys::System; conserve_qns=true
     
     os = OpSum()
     for (i, j, coupling) in bond_pairs
-        print("Processing bond pair ($i, $j) with coupling:  $coupling\n")
+        #print("Processing bond pair ($i, $j) with coupling:  $coupling\n")
         # Extract coupling matrix elements
         J_xx = coupling[1, 1]  # SxSx coupling
         J_yy = coupling[2, 2]  # SySy coupling
@@ -250,7 +261,8 @@ Main DMRG calculation function for any Sunny system.
 - `show_crystal::Bool=false`: Whether to display crystal structure
 
 Returns a `DMRGResults` object containing the ground state energy, wavefunction, 
-and all associated system information.
+and all associated system information, and the mapping of site coords to DMRG mapping.
+see [`cartind_to_label`]@ref
 
 # Example
 ```julia
@@ -280,7 +292,7 @@ function calculate_ground_state(sys::System;
     end
     
     # Extract bonds from the system
-    bond_pairs, N_basis = get_unique_bonds(sys)
+    bond_pairs, N_basis, n_to_cartind = get_unique_bonds(sys)
 
     # Build Hamiltonian
     H, sites = build_hamiltonian_from_bonds(bond_pairs, sys; conserve_qns=conserve_qns)
@@ -308,6 +320,6 @@ function calculate_ground_state(sys::System;
     results = DMRGResults(energy, psi, H, sites, bond_pairs, 
                          N_basis, sys.crystal, sys)
     
-    return results
+    return results, n_to_cartind
 end
 

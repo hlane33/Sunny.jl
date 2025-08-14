@@ -28,6 +28,7 @@ Container for dynamical structure factor data 𝒮^{αβ}(q,ω) computed from qu
 mutable struct QuantumCorrelations
     # 𝒮^{αβ}(q,ω) data and metadata
     const data           :: Array{ComplexF64, 7}                 # Raw SF with sublattice indices (ncorrs × natoms × natoms × sys_dims × nω)
+    const system         :: System                               # System used for qc object
     const crystal        :: Crystal                              # Crystal for interpretation of q indices in `data`
     const origin_crystal :: Union{Nothing,Crystal}               # Original user-specified crystal (if different from above)
 
@@ -90,9 +91,10 @@ Construct a QuantumCorrelations container for accumulating dynamical correlation
 # Notes
 - Uses manual Fourier transform (no zero-padding needed)
 - Currently the only measure that will work is `ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false`
-- Assumes 1D system for initial implementation - This might be fine if ITensor effectively turns the system 1D??
+- Assumes 1D system for calculation of G (1D snaking of sites) so if you try a 2D system, and assign 
+all the G[j,t] to just the first spatial dimension of samplebuf, it won't be long enough.  
 """
-function QuantumCorrelations(sys::System, qs_length::Int, energies_length::Int;
+function QuantumCorrelations(sys::System, energies_length::Int,qxs_length::Int, qys_length::Int=1;
                              measure=ssf_custom((q, ssf) -> real(ssf[3, 3]), sys;apply_g=false),
                              num_timesteps::Int,
                              positions=nothing)         
@@ -126,7 +128,7 @@ function QuantumCorrelations(sys::System, qs_length::Int, energies_length::Int;
 
     # The output data has n_all_ω frequencies and data accounts for extended data via linear prediction
     #Assumes 1D system
-    data = zeros(ComplexF64, num_correlations(measure), npos, npos, qs_length, 1, 1, energies_length)
+    data = zeros(ComplexF64, num_correlations(measure), npos, npos, qxs_length, qys_length, 1, energies_length)
 
     # Initialize nsamples to zero. Make an array so can update dynamically
     # without making struct mutable.
@@ -134,7 +136,7 @@ function QuantumCorrelations(sys::System, qs_length::Int, energies_length::Int;
 
     # Make Structure factor and add an initial sample
     origin_crystal = isnothing(sys.origin) ? nothing : sys.origin.crystal
-    qc = QuantumCorrelations(data, sys.crystal, origin_crystal, 
+    qc = QuantumCorrelations(data, sys, sys.crystal, origin_crystal, 
                              measure, copy(measure.observables), positions, atom_idcs, copy(measure.corr_pairs),
                              nsamples,
                              samplebuf, corrbuf)

@@ -27,10 +27,10 @@ function get_observables_from_G!(buf, G, t_idx, observables, atom_idcs)
     for idx in CartesianIndices(observables)
         obs_idx, la, lb, lc, pos = idx.I
         atom = atom_idcs[la, lb, lc, pos]
-        site = la  # Simplified for 1D case
 
-        if obs_idx == 3 && atom ≤ size(G, 1)  # `sz` assumed at index 3
-            buf[idx] = G[site, t_idx]
+        if obs_idx == 3  # `sz` assumed at index 3
+            # Directly use the 5D indices to access G
+            buf[idx] = G[la, lb, lc, pos, t_idx]
         else
             buf[idx] = 0.0
         end
@@ -55,7 +55,7 @@ Like Sunny.trajectories in CorrelationSampling.jl
 - `AssertionError` if `G` has fewer than `nsnaps` time steps.
 """
 function get_trajectory_from_G!(buf, G, nsnaps, observables, atom_idcs)
-    @assert size(G, ndims(G)) ≥ nsnaps "G must have at least $nsnaps time steps"
+    @assert size(G, 5) ≥ nsnaps "G must have at least $nsnaps time steps"
     for t_idx in 1:nsnaps
         get_observables_from_G!(
             @view(buf[:, :, :, :, :, t_idx]), 
@@ -102,7 +102,7 @@ Accumulate a sample into `qc.data` after Fourier transform and linear prediction
 function accum_sample!(qc::QuantumCorrelations, FT_params, linear_predict_params; assume_real_S=false)
     (; data, samplebuf) = qc
     
-    # Slice params (hardcoded for Sz)
+    # Slice params (hardcoded for Sz) in 1D
     # TODO make this flexible so that it can be adjusted based on corr choice
     obs_idx = 3
     corr_idx = 1
@@ -139,9 +139,17 @@ Process a TDVP trajectory sample through Sunny's infrastructure.
 1. Injects quantum data via `new_sample!`.
 2. Processes with `accum_sample_other!`.
 """
-function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,2}, FT_params, linear_predict_params; assume_real_S::Bool=false)
+function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,5}, FT_params, linear_predict_params; assume_real_S::Bool=false)
     new_sample!(qc, G)
-    accum_sample!(qc, FT_params, linear_predict_params; assume_real_S=assume_real_S)
+
+
+    
+    if prod(qc.system.dims) == qc.system.dims[1] #must be 1D
+        accum_sample!(qc, FT_params, linear_predict_params; assume_real_S=assume_real_S)
+    else
+        # DOES NOT currently work!!!!
+        accum_sample_2d!(qc::QuantumCorrelations, FT_params, linear_predict_params; assume_real_S=assume_real_S)
+    end
     println("Quantum TDVP data processed through Sunny's infrastructure")
     return nothing
 end
