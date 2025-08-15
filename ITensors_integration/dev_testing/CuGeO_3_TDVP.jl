@@ -1,8 +1,19 @@
 using ITensors, ITensorMPS, GLMakie, Sunny
-include("sunny_toITensor.jl")
+include("../ITensors_integration.jl")
+
+
+# This is my attempt at the DMRG/TEBD implementation of this paper https://arxiv.org/pdf/2507.19412v1
+# I think that the actual DMRG part of this paper does not require the system to 'know' that it is CuGeO_3
+# but I could be wrong on this. I have tried to set up a J1-J2-δ model like they do in the paper but 
+# it is failing when the symmetry wants to overrwrite the bonds. I think it will take someone more familiar
+# with what sunny is doing to implement this properly but there is no reason I can think of why it wouldn't work
+# with the integration, except perhaps that compute_S may fail with having multiple atoms per unit cell.
+# This is currently unintegrated as it makes it easier to test, but see `../examples/AFM_chain.jl` for how this 
+# would be implemented.
+
 
 #################
-# Core Functions #
+# Core Functions for TEBD but TPVD could be used#
 #################
 
 function apply_op(ϕ::MPS, opname::String, sites, siteidx::Int)
@@ -64,6 +75,55 @@ function compute_S(qs, ωs, G, positions, c, ts)
     return out
 end
 
+
+#############
+# Sunny Set up #
+############
+function create_dimer_chain(Lx::Int, Ly::Int=1, Lz::Int=1;
+                            a::Float64=3.5, s::Float64=0.5,
+                            periodic_bc::Bool=false)
+
+    # --- Paper parameters (meV) ---
+    J1  = 13.79
+    δ   = 0.04
+    J1_strong = J1 * (1 + δ)   # intra-cell A→B
+    J1_weak   = J1 * (1 - δ)   # inter-cell B→A across +x cell
+    J2        = 0.35 * J1      # next-nearest neighbor A→A (and B→B)
+
+    # --- Lattice geometry ---
+    latvecs = lattice_vectors(a, 20.0, 20.0, 90, 90, 90)   # 1D along x
+    positions = [[0.0, 0.0, 0.0],   # A
+                 [0.5, 0.0, 0.0]]   # B
+    crystal = Crystal(latvecs, position)
+
+    # --- System in dipole mode ---
+    sys = System(crystal, [1 => Moment(; s=s, g=2)], :dipole)
+
+    view_crystal(sys)
+
+    # --- Bond definitions ---
+    nn_bond_strong = Bond(1, 2, [0, 0, 0])    # A→B intra-cell
+    nn_bond_weak   = Bond(2, 1, [1, 0, 0])    # B→A in next cell
+    nnn_bond_A     = Bond(1, 1, [1, 0, 0])    # A→A next cell
+    nnn_bond_B     = Bond(2, 2, [1, 0, 0])    # B→B next cell
+
+    # --- Set exchanges ---
+    set_exchange!(sys, J1_strong, nn_bond_strong)
+    set_exchange!(sys, J1_weak,   nn_bond_weak)
+    set_exchange!(sys, J2,        nnn_bond_A)
+    set_exchange!(sys, J2,        nnn_bond_B)
+
+    # --- Build finite/periodic system ---
+    sys = repeat_periodically(sys, (Lx, Ly, Lz))
+    sys_inhom = to_inhomogeneous(sys)
+    pbc = (periodic_bc, false, false)   # Only x may be periodic
+    remove_periodicity!(sys_inhom, pbc)
+
+    return sys_inhom
+end
+
+
+
 ################
 # Main Program #
 ################
@@ -83,8 +143,8 @@ function main()
     tmax = 10.0
 
     # Run DMRG
-    sys = create_dimerized_spin_chain(N; a=4.2, s=0.5, J1=13.79, J2=4.83, periodic_bc=false)
-    DMRG_results = calculate_ground_state(sys)
+    sys = create_dimer_chain(40, periodic_bc=false)
+    DMRG_results, _ = calculate_ground_state(sys)
     ψ = DMRG_results.psi
     E0 = DMRG_results.energy
     sites = DMRG_results.sites
@@ -112,7 +172,7 @@ function main()
               xlabel = "qₓ",
               xticks = ([0, allowed_qs[end]], ["0", "2π"]),
               ylabel = "Energy (meV)",
-              title = "S=1/2 AFM DMRG/2nd order TEBD without sunny for N = $N")
+              title = "S=1/2 CuGeO_3 dimerized spin chain N = $N")
     Makie.heatmap!(ax, allowed_qs, energies, out,
              colorrange = (0, 0.5 * maximum(out)))
     ylims!(ax, 0, 5)
