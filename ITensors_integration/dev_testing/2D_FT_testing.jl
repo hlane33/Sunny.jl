@@ -1,9 +1,9 @@
 ######Code that attempts to do FT for 2D systems with single unit cell ###
-### currently fails
+### currently runs but fails to produce a meaningful results ###
 import Sunny
 
 
-function accum_sample_2d!(qc::QuantumCorrelations, FT_params, linear_predict_params; assume_real_S=false)
+function accum_sample_2d!(qc::QuantumCorrelations, FT_params, linear_predict_params; assume_real_S=true)
     (; data, samplebuf) = qc
     
     # Slice params (hardcoded for Sz) in 2D
@@ -12,7 +12,7 @@ function accum_sample_2d!(qc::QuantumCorrelations, FT_params, linear_predict_par
     corr_idx = 1
     
     # Extract 2D spatial slice: G[spatial_x, spatial_y, spatial time]
-    G = samplebuf[obs_idx, :, :, :, 1, :]  # Shape: (Nx, Ny, Nt)
+    G = samplebuf[obs_idx, :, :, 1, 1, :]  # Shape: (Nx, Ny, Nt)
     println("Shape of G (2D): ", size(G))
     
     if assume_real_S
@@ -30,10 +30,11 @@ function accum_sample_2d!(qc::QuantumCorrelations, FT_params, linear_predict_par
     data_slice .= out
 end
 
-function compute_S_2d(G::AbstractArray{ComplexF64,4}, ft_params::FTParams; linear_predict_params::LinearPredictParams)
+function compute_S_2d(G::AbstractArray{ComplexF64,3}, ft_params::FTParams; linear_predict_params::LinearPredictParams)
     
     qxs = ft_params.allowed_qxs
     qys = ft_params.allowed_qys  
+    c = ft_params.c
     ωs = ft_params.energies
     positions = ft_params.positions
     ts = ft_params.ts
@@ -43,6 +44,7 @@ function compute_S_2d(G::AbstractArray{ComplexF64,4}, ft_params::FTParams; linea
     
     @assert size(positions, 2) == total_sites "Position matrix should have $(total_sites) sites, got $(size(positions, 2))"
     
+    print(positions[:,4])
 
     # Precompute trigonometric terms for time
     cos_ωt = [cos(ω*t) for ω in ωs, t in ts]
@@ -58,7 +60,7 @@ function compute_S_2d(G::AbstractArray{ComplexF64,4}, ft_params::FTParams; linea
         
         for (qxi, qx) in enumerate(qxs), (qyi, qy) in enumerate(qys)
             # q⃗·r⃗ = qx*rx + qy*ry (ignoring z for 2D)
-            cos_qr[qxi, qyi, xi, yi] = cos(qx*rx + qy*ry)
+            cos_qr[qxi, qyi, xi, yi] = cos(qx*(rx-c) + qy*(ry-c))
         end
         
         site_idx += 1
@@ -87,20 +89,4 @@ function compute_S_2d(G::AbstractArray{ComplexF64,4}, ft_params::FTParams; linea
     return out
 end
 
-# Function to extract positions from Sunny system
-function extract_positions_from_sunny(sys)
-    # Get all site positions from the Sunny system
-    # sys.crystal.positions contains fractional coordinates
-    # sys.dims gives the system dimensions
-    
-    positions = []
-    for site in Sunny.eachsite(sys)
-        # Get real-space position for this site
-        r = Sunny.global_position(sys, site)  # Returns [x, y, z] in Angstroms
-        push!(positions, r)
-    end
-    
-    # Convert to matrix format [3 x Nsites] for easier indexing
-    pos_matrix = hcat(positions...)
-    return pos_matrix
-end
+
