@@ -148,6 +148,9 @@ function add_sample!(qc::QuantumCorrelations, G::Array{ComplexF64,5}, FT_params,
         accum_sample!(qc, FT_params, linear_predict_params; assume_real_S=assume_real_S)
     else
         # DOES NOT currently work!!!!
+        @warn """
+        2D Systems are currently still in devlopment - use at your peril.
+        """
         accum_sample_2d!(qc::QuantumCorrelations, FT_params, linear_predict_params; assume_real_S=assume_real_S)
     end
     println("Quantum TDVP data processed through Sunny's infrastructure")

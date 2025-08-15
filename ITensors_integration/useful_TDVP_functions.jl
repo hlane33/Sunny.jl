@@ -248,7 +248,6 @@ Compute S(q,ω) via real-space Fourier transform.
 """
 function compute_S(G::AbstractMatrix{ComplexF64}, ft_params::FTParams; linear_predict_params::LinearPredictParams)
    
-
     qs = ft_params.allowed_qxs
     ωs = ft_params.energies
     positions_3D = ft_params.positions
@@ -256,7 +255,8 @@ function compute_S(G::AbstractMatrix{ComplexF64}, ft_params::FTParams; linear_pr
     ts = ft_params.ts
 
     #convert positions to just 1D
-    positions = positions_3D[1,:] .+ 1
+    positions = Int.(positions_3D[1,:])
+
     
     # Time series extension
     if linear_predict_params.n_predict > 0
@@ -275,7 +275,7 @@ function compute_S(G::AbstractMatrix{ComplexF64}, ft_params::FTParams; linear_pr
         for xi in 1:length(positions), ti in 1:length(ts)
             sum_val += cos_qr[qi,xi] * (cos_ωt[ωi,ti] * real(G[xi,ti]) - sin_ωt[ωi,ti] * imag(G[xi,ti]))
         end
-        out[qi,ωi] = sum_val
+        out[qi,ωi] = real(sum_val)
     end
     
     return out
@@ -318,7 +318,7 @@ function compute_S_complex(G::AbstractMatrix{ComplexF64}, ft_params::FTParams; l
 
     
     #convert positions to just 1D (The plus one aligns with choice of c in TDPVP)
-    positions = positions[1,:] .+ 1
+    positions = Int.(positions[1,:])
     # Time series extension
     if linear_predict_params.n_predict > 0
         ts, G = _extend_time_series(ts, G; linear_predict_params)
@@ -367,7 +367,7 @@ Extract real-space positions of all sites from a Sunny system and return them as
 
 # Notes
 - For 1D or 2D systems, the unused dimensions will be zero filled.
-- Positions start at zero not one, so for a 1D chain pos_matrix[1,:] = [0.0, 1.0, ...]
+- Positions start at zero not one in global_position() so I have offset these to match TDVP
 
 """
 function extract_positions_from_sunny(sys)
@@ -378,7 +378,7 @@ function extract_positions_from_sunny(sys)
     positions = []
     for site in Sunny.eachsite(sys)
         # Get real-space position for this site
-        r = Sunny.global_position(sys, site)  # Returns [x, y, z] in Angstroms
+        r = Sunny.global_position(sys, site) + [1, 1, 0] # Returns [x, y, z] in Angstroms 
         push!(positions, r)
     end
     
@@ -489,6 +489,17 @@ High-level wrapper for computing G matrix with DMRG initialization.
 - The ϕ state is created by applying Sz operator at central site (ft_params.c)
 """
 function compute_G_wrapper(sys, tdvp_params, ft_params, linear_predict_params; dmrg_config)
+      # Check for even supercell dimensions
+      
+    if any(iseven, sys.dims)
+        @warn """
+        Supercell has even dimensions (dims = $(sys.dims)). 
+        This may introduce numerical artifacts in the results due to oddities in the fourier transform set up.
+        This is especially true for small N (N<20) and when using compute_S_complex()
+        Consider using a supercell with odd dimensions
+        """
+    end
+    
     DMRG_results, n_to_cartind = calculate_ground_state(sys; dmrg_config)
     ϕ = apply_op(DMRG_results.psi, "Sz", DMRG_results.sites, ft_params.c)
     G = compute_G(tdvp_params, ft_params, DMRG_results.psi, ϕ, DMRG_results.H, DMRG_results.sites)
