@@ -13,7 +13,7 @@ include("../ITensors_integration.jl")
 # But see dev_testing/square_lattice_TDVP and dev_testing/2D_FT_testing/ for ideas on the 2D case.
 
 # Start by defining the size of your chain
-N = 13 #size of chain 
+N = 32 #size of chain 
 
 # Choose the parameters for your time evolution
 tdvp_params = TDVPParams(
@@ -31,7 +31,7 @@ ts = 0.0:tdvp_params.tstep:tdvp_params.tmax
 # Create system using `sunny_toITensor.jl`
 # This uses one of the helpers from `lattice_helpers.jl`
 # I would recommend looking there for guidance on how to set up the system initially
-sys = create_chain_system(N; periodic_bc = true)
+sys = create_chain_system(N; periodic_bc = false)
 cryst = sys.crystal
 
 # Here you choose the qs you want during the Fourier transform
@@ -49,9 +49,7 @@ path_qs = [2π*q[1] for q in qpts]
 c = div(N, 2)
 
 # Positions are extracted using Sunny's get_global_positions() function
-# Note that extract_positions makes the positions start at 0.0 for the first site
-# This is different from what the TDVP expects in Compute_G() but is currently corrected for 
-# later in Compute_S() so that the positions inputted into the Fourier transform start at 1.0 for the first site
+# but offset by [1,1,0] to match the numbering in TDVP code
 positions = extract_positions_from_sunny(sys) 
 
 # Set the parameters for the fourier transform
@@ -69,8 +67,8 @@ ft_params = FTParams(
 # LinearPredictParams is a struct that passes the parameters
 # to linear_predict() to apply linear regression as a form of windowing
 linear_predict_params = LinearPredictParams(
-    n_predict = 5,
-    n_coeff   = 5
+    n_predict = 20,
+    n_coeff   = 15
 )
 
 # ----------------------
@@ -116,7 +114,7 @@ qc = QuantumCorrelations(
 )
 
 # Mimics add_sample!(sc) in Sunny to add the correlations to the buffer and then compute the structure factor
-add_sample!(qc, G_2D, ft_params, linear_predict_params)
+add_sample!(qc, G_2D, ft_params, linear_predict_params; assume_real_S=true)
 
 # Uses a modified version of Sunny.intensities to process the structure factor data
 # For a 1D chain this doesn't do much beyond allow for the plotting using plot_intensities!
