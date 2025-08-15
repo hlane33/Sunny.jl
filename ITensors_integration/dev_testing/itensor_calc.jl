@@ -142,8 +142,8 @@ end
 
 
 let
-    Nx = 5
-    Ny = 5
+    Nx = 8
+    Ny = 10
     N_basis = 2  # Number of basis states per site (S=1/2)
     N = Nx * Ny*N_basis
     yperiodic = false
@@ -153,8 +153,7 @@ let
     # Use the OpSum feature to create the 
     # next-neighbor Heisenberg model.
     ops = OpSum()
-    lattice = honeycomb_lattice(Nx, Ny; yperiodic=yperiodic)
-    print(lattice)
+    lattice = triangular_lattice(Nx, Ny; yperiodic=yperiodic)
     num_bonds = length(lattice)
     println("Number of bonds in the $Nx×$Ny lattice with yperiodic=$yperiodic: $num_bonds")
 
@@ -186,7 +185,7 @@ let
 
     # Set the parameters controlling the accuracy of the DMRG
     # calculation for each DMRG sweep. 
-    nsweeps = 5
+    nsweeps = 10
     maxdim = [10, 20, 100, 100, 200]
     cutoff = [1E-8]
     noise = 1E-7,1E-8,0.0
