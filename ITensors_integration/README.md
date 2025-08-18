@@ -8,7 +8,7 @@ A note on naming convention: files that follow the CamelCase naming style replic
 
 This code was largely written by me, Adam Lavender, as part of a 2025 summer internship, under the support of Harry Lane, to whom I am very grateful. It is very likely that there will be significant bugs and errors in this code but I hope it is a good jumping off point for a useful tool. If you have any questions or concerns, I will do my best to help, please email adam.lavender@student.manchester.ac.uk .
 
-- Adam Lavender, August 2025
+-- Adam Lavender, August 2025
 
 ## Directory Structure
 
