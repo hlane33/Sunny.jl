@@ -238,7 +238,7 @@ function solve_self_consistent_nlswt!(scnlswt::SelfConsistentNLSWT; mean_field_v
     update_mean_field_values!(scnlswt, x0)
     sce_eqn! = (f, x) -> self_consistent_nlswt!(f, x, scnlswt, hcubature_opts)
     ret = nlsolve(sce_eqn!, x0; nlsolve_opts...)
-    !converged(ret) && @warn "Self-consistent NLSWT converged to a solution with residual $(ret.residual)"
+    !converged(ret) && @warn "Self-consistent NLSWT converged to a solution with residual $(ret.residual_norm)"
     update_mean_field_values!(scnlswt, ret.zero)
 end
 
