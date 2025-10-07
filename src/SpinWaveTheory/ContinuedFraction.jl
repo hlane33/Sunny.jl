@@ -99,6 +99,67 @@ function continued_fraction_initial_states(npt::NonPerturbativeTheory, q, q_inde
     return f0s
 end
 
+function continued_fraction_initial_states_single_magnon(npt::NonPerturbativeTheory, q, q_index::CartesianIndex{3})
+    (; swt, clustersize) = npt
+    (; sys, data, measure) = swt
+    (; observables_localized) = data
+    cryst = orig_crystal(sys)
+    q_global = cryst.recipvecs * q
+
+    num_obs = num_observables(swt.measure)
+
+    Nm = length(sys.dipoles)
+    N  = sys.Ns[1]
+    Nu = clustersize[1] * clustersize[2] * clustersize[3]
+    S = (N-1) / 2
+    sqrt_halfS = √(S/2)
+
+    num_1ps = nbands(swt)
+
+    f0s = zeros(ComplexF64, num_1ps, num_obs)
+
+    # Note that: in Sunny.jl, the convention for the dynamical spin structure factor is normalized to the number of unit cells instead of the number of sites. As a result, we do not include the 1/√Nm factor in for the initial state.
+    Avec_pref = zeros(ComplexF64, num_obs, Nm)
+    for i in 1:Nm, μ in 1:num_obs
+        r_global = global_position(sys, (1,1,1,i))
+        ff = get_swt_formfactor(measure, μ, i)
+        Avec_pref[μ, i] = exp(1im * dot(q_global, r_global))
+        Avec_pref[μ, i] *= compute_form_factor(ff, norm2(q_global))
+    end
+    
+    Vq = npt.Vps[:, :, q_index]
+    if sys.mode == :SUN
+        # Get the initial state components for the one-particle states
+        for band in 1:num_1ps
+            vq = reshape(view(Vq, :, band), N-1, Nm, 2)
+            for i in 1:Nm
+                for μ in 1:num_obs
+                    O = observables_localized[μ, i]
+                    for α in 1:N-1
+                        f0s[band, μ] += Avec_pref[μ, i] * (O[α, N] * conj(vq[α, i, 1]) + O[N, α] * conj(vq[α, i, 2]))
+                    end
+                end
+            end
+        end
+        
+    else
+        # TODO: add a more clear note for this part, now I will follow Zhentao's note
+        @assert sys.mode in (:dipole, :dipole_large_S)
+        for band in 1:num_1ps
+            vq = reshape(view(Vq, :, band), Nm, 2)
+            for i in 1:Nm
+                for μ in 1:num_obs
+                    displacement_local_frame = conj([vq[i, 2] + vq[i, 1], im * (vq[i, 2] - vq[i, 1]), 0.0])
+                    O_local_frame = observables_localized[μ, i]
+                    f0s[band, μ] += Avec_pref[μ, i] * sqrt_halfS * (O_local_frame' * displacement_local_frame)
+                end
+            end
+        end
+    end
+
+    return f0s
+end
+
 function modified_lanczos_aux!(as, bs, H, f0, niters)
     if norm(f0) < 1e-12
         as .= 0
@@ -257,6 +318,98 @@ function intensities_continued_fraction(npt::NonPerturbativeTheory, q, ωs, η::
     two_particle_hamiltonian!(H2ps, npt, q_index)
     one_to_two_particle_hamiltonian!(H12ps, npt, q_index)
     @. H21ps = copy(H12ps')
+
+    # At this moment, we only support the correlation function for the same observable
+    as = zeros(niters)
+    bs = zeros(niters-1)
+
+    ret_buff = zeros(length(ωs), 6)
+
+    num_obs = num_observables(swt.measure)
+    for i in 1:num_obs
+        # Diagonal elements
+        f0 = view(f0s, :, i)
+        modified_lanczos_aux!(as, bs, H, f0, niters)
+        for (iω, ω) in enumerate(ωs)
+            z = ω + 1im*η
+            G = z - as[niters]
+            for j in niters-1:-1:1
+                A = bs[j]^2 / G
+                G = z - as[j] - A
+            end
+            G = inv(G) * real(dot(f0, f0))
+            ret_buff[iω, i] = - imag(G) / π
+        end
+        # Off-diagonal elements
+        f1 = view(f0s, :, mod1(i+1, num_obs))
+        modified_lanczos_aux!(as, bs, H, f0+f1, niters)
+        for (iω, ω) in enumerate(ωs)
+            z = ω + 1im*η
+            G = z - as[niters]
+            for j in niters-1:-1:1
+                A = bs[j]^2 / G
+                G = z - as[j] - A
+            end
+            G = inv(G) * real(dot(f0+f1, f0+f1))
+            ret_buff[iω, i+3] = - imag(G) / π
+        end
+    end
+
+    # Apply the neutron polarization factor
+    cryst = orig_crystal(swt.sys)
+    q_global = cryst.recipvecs * q
+    q2 = norm2(q_global)
+
+    ret = zeros(length(ωs))
+    if q2 < 1e-6
+        # Later we may add the 2/3 factor to be consistent with the Sunny main
+        for i in 1:num_obs
+            @. ret += ret_buff[:, i]
+        end
+    else
+        for i in 1:num_obs
+            @. ret += ret_buff[:, i] * (1 - q_global[i]^2 / q2)
+            @. ret -= (ret_buff[:, i+3] - ret_buff[:, i] - ret_buff[:, mod1(i+1, 3)]) * q_global[i] * q_global[mod1(i+1, 3)] / q2
+        end
+    end
+
+    return ret
+end
+
+
+
+function intensities_continued_fraction_single_magnon(npt::NonPerturbativeTheory, q, ωs, η::Float64, niters::Int; single_particle_correction::Bool=true, opts...)
+    # Calculate the dynamical spin structure factor using continued fraction method
+    # The function returns the intensities for all observables
+    # The function is not parallelized yet
+    (; clustersize, swt, qs) = npt
+    Nu1, Nu2, Nu3 = clustersize
+    Nu = Nu1 * Nu2 * Nu3
+
+    # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
+    q_reshaped = to_reshaped_rlu(npt.swt.sys, q)
+    for i in 1:3
+        (abs(q_reshaped[i]) < 1e-12) && (q_reshaped = setindex(q_reshaped, 0.0, i))
+    end
+    # Here we mod one. This is because the q_reshaped is in the reciprocal lattice unit, and we need to find the closest q in the grid.
+    q_reshaped = mod.(q_reshaped, 1.0)
+    for i in 1:3
+        (abs(q_reshaped[i]) < 1e-12) && (q_reshaped = setindex(q_reshaped, 0.0, i))
+    end
+    q_index = findmin(x -> norm(x - q_reshaped), qs)[2]
+
+    if norm(qs[q_index] - q_reshaped) > 1e-12
+        @warn "The momentum is not in the grid. The closest momentum in the grid is $(qs[q_index])."
+    end
+
+    # Calculate initial states for all observables
+    f0s = continued_fraction_initial_states_single_magnon(npt, q, q_index)
+
+    num_1ps = nbands(swt)
+    # Number of two-particle states is given by the following combinatorial formula:
+
+    H = zeros(ComplexF64, num_1ps, num_1ps)
+    one_particle_hamiltonian!(H, npt, q_index; single_particle_correction, opts...)
 
     # At this moment, we only support the correlation function for the same observable
     as = zeros(niters)
