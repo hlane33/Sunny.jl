@@ -13,12 +13,13 @@ import Random: Random, randn!
 import Optim
 import JLD2
 import HCubature: hcubature
-
+import NonlinearSolve: NonlinearProblem, solve, NewtonRaphson
 # Specific to Symmetry/
 import CrystalInfoFramework as CIF
 import Spglib
 import RowEchelon: rref!
 import Brillouin
+import LsqFit: curve_fit
 
 include("MathBasics.jl")
 
@@ -74,7 +75,7 @@ include("Reshaping.jl")
 export reshape_supercell, resize_supercell, repeat_periodically, repeat_periodically_as_spiral
 
 include("Integrators.jl")
-export Langevin, ImplicitMidpoint, step!, suggest_timestep
+export Langevin, ImplicitMidpoint, step!, suggest_timestep, ColoredNoiseGenerator, set_temperature!, LangevinColored, LongitudinalLangevin
 
 include("Optimization.jl")
 export minimize_energy! 
