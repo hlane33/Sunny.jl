@@ -189,8 +189,7 @@ function add_sample!(sc::SampledTimeCorrelations, sys::System)
 end
 
 function new_sample!(sc::SampledTimeCorrelations, sys::System)
-    (; integrator, samplebuf,measperiod, nts, observables, atom_idcs) = sc
-    nsnaps = nts
+    (; integrator, samplebuf,measperiod, nsnaps, observables, atom_idcs) = sc
 
     # @assert size(sys.dipoles) == size(samplebuf)[2:5] "`System` size not compatible with given `SampledCorrelations`"
 
@@ -201,7 +200,7 @@ end
 
 
 function accum_sample!(sc::SampledTimeCorrelations; )
-    (; data, M, corr_pairs, samplebuf, corrbuf, space_fft!,nts) = sc
+    (; data, M, corr_pairs, samplebuf, corrbuf, space_fft!,nsnaps) = sc
     npos = size(samplebuf)[5]
 
     # Transform A(q) = ∑ exp(iqr) A(r).
@@ -225,7 +224,7 @@ function accum_sample!(sc::SampledTimeCorrelations; )
         # α† and β. This conjugation implements both the dagger on the α
         # as well as the appropriate spacetime offsets of the correlation.
         @. corrbuf = conj(sample_α) * sample_β
-        corrbuf ./= nts
+        # corrbuf ./= nsnaps  # don't think this is right - why would we divide by nsnaps
 
         if isnothing(M)
             for k in eachindex(databuf)

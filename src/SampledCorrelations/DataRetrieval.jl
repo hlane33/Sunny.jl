@@ -253,8 +253,10 @@ end
 function intensities(sc::SampledTimeCorrelations, qpts; )
     println("Quantum-classical correction not being perfomed")
     # Determine t information
-    nts = sc.nts
-    ts = 1:nts
+    nsnaps = sc.nsnaps
+    dt = sc.dt
+    measperiod = sc.measperiod
+    ts = range(dt,measperiod*dt*nsnaps;length=nsnaps)
 
 
     # Prepare memory and configuration variables for actual calculation
@@ -271,13 +273,13 @@ function intensities(sc::SampledTimeCorrelations, qpts; )
     ffs = sc.measure.formfactors[1, :]
 
     # Intensities calculation
-    intensities_aux!(intensities, sc.data, sc.crystal, sc.positions, sc.measure.combiner, ffs, q_idx_info, ts, NCorr, NPos)
+    intensities_aux!(intensities, sc.data, sc.crystal, sc.positions, sc.measure.combiner, ffs, q_idx_info, 1:length(ts), NCorr, NPos)
 
     # Convert to a q-space density in original (not reshaped) RLU.
     intensities .*= det(sc.crystal.recipvecs) / det(crystal.recipvecs)
 
     intensities = reshape(intensities, length(ts), size(qpts.qs)...)
 
-    return Intensities(crystal, qpts, collect(Float64.(ts)), intensities)
+    return Intensities(crystal, qpts, collect(ts), intensities)
 end
 

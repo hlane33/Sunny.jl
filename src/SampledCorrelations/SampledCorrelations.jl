@@ -178,10 +178,7 @@ function to_reshaped_rlu(sc::SampledCorrelations, q)
     return sc.crystal.recipvecs \ orig_cryst.recipvecs * q
 end
 
-function to_reshaped_rlu(sc::SampledTimeCorrelations, q)
-    orig_cryst = @something sc.origin_crystal sc.crystal
-    return sc.crystal.recipvecs \ orig_cryst.recipvecs * q
-end
+
 
 """
     SampledCorrelations(sys::System; measure, energies, dt)
@@ -276,7 +273,7 @@ end
 
 mutable struct SampledTimeCorrelations
     # 𝒮^{αβ}(q,ω) data and metadata
-    const data           :: Array{ComplexF64, 7}                 # Raw SF with sublattice indices (ncorrs × natoms × natoms × sys_dims × nts)
+    const data           :: Array{ComplexF64, 7}                 # Raw SF with sublattice indices (ncorrs × natoms × natoms × sys_dims × nsnaps)
     const M              :: Union{Nothing, Array{Float64, 7}}    # Running estimate of (nsamples - 1)*σ² (where σ² is the variance of intensities)
     const crystal        :: Crystal                              # Crystal for interpretation of q indices in `data`
     const origin_crystal :: Union{Nothing,Crystal}               # Original user-specified crystal (if different from above)
@@ -291,7 +288,7 @@ mutable struct SampledTimeCorrelations
 
     # Trajectory specs
     const integrator   :: AbstractIntegrator                     # Integrator for calculating sample trajectories.
-    const nts          :: Int                                # Total time steps.
+    const nsnaps       :: Int                                    # Total time steps.
     const measperiod   :: Int                                    # number of steps between snapshots
     nsamples           :: Int64                                  # Number of accumulated samples (single number saved as array for mutability)
 
@@ -307,16 +304,15 @@ function Base.show(io::IO, ::SampledTimeCorrelations)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", sc::SampledTimeCorrelations)
-    (; crystal, nsamples,nts) = sc
     nω = round(Int, size(sc.data)[7]/2)
     sys_dims = size(sc.data[4:6])
     printstyled(io, "SampledTimeCorrelations"; bold=true, color=:underline)
     println(io," ($(Base.format_bytes(Base.summarysize(sc))))")
     print(io,"[")
     printstyled(io,"S(q,t)"; bold=true)
-    print(io," | nts = $nts, dt = $(round(sc.dt, digits=4))")
-    println(io," | $nsamples $(nsamples > 1 ? "samples" : "sample")]")
-    println(io,"Lattice: $sys_dims × $(natoms(crystal))")
+    print(io," | nsnaps = $(sc.nsnaps), measperiod = $(sc.measperiod), dt = $(round(sc.dt, digits=4))")
+    println(io," | $(sc.nsamples) $(sc.nsamples > 1 ? "samples" : "sample")]")
+    println(io,"Lattice: $(sc.sys_dims) × $(natoms(sc.crystal))")
 end
 
 function Base.getproperty(sc::SampledTimeCorrelations, sym::Symbol)
@@ -333,7 +329,7 @@ function Base.setproperty!(sc::SampledTimeCorrelations, sym::Symbol, val)
     end
 end
 
-function SampledTimeCorrelations(sys::System; measure,measperiod=1, dt, nts, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
+function SampledTimeCorrelations(sys::System; measure,measperiod, dt, nsnaps, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
     isnan(integrator.dt) || error("Timestep of `integrator` must be uninitialized.")
     integrator.dt = dt
 
@@ -357,11 +353,11 @@ function SampledTimeCorrelations(sys::System; measure,measperiod=1, dt, nts, cal
 
     measure = isnothing(measure) ? ssf_trace(sys) : measure
     num_observables(measure)
-    samplebuf = zeros(ComplexF64, num_observables(measure), sys.dims..., npos, nts)
-    corrbuf = zeros(ComplexF64, sys.dims..., nts)
+    samplebuf = zeros(ComplexF64, num_observables(measure), sys.dims..., npos, nsnaps)
+    corrbuf = zeros(ComplexF64, sys.dims..., nsnaps)
 
     # The output data has nts many frequencies
-    data = zeros(ComplexF64, num_correlations(measure), npos, npos, sys.dims..., nts)
+    data = zeros(ComplexF64, num_correlations(measure), npos, npos, sys.dims..., nsnaps)
     M = calculate_errors ? zeros(Float64, size(data)...) : nothing
 
     # The normalization is defined so that the prod(sys.dims)-many estimates of
@@ -380,8 +376,12 @@ function SampledTimeCorrelations(sys::System; measure,measperiod=1, dt, nts, cal
     origin_crystal = isnothing(sys.origin) ? nothing : sys.origin.crystal
     sc = SampledTimeCorrelations(data, M, sys.crystal, origin_crystal, dt,
                              measure, copy(measure.observables), positions, atom_idcs, copy(measure.corr_pairs),
-                             integrator, nts,measperiod, nsamples,
+                             integrator, nsnaps,measperiod, nsamples,
                              samplebuf, corrbuf, space_fft!)
 
     return sc
+end
+function to_reshaped_rlu(sc::SampledTimeCorrelations, q)
+    orig_cryst = @something sc.origin_crystal sc.crystal
+    return sc.crystal.recipvecs \ orig_cryst.recipvecs * q
 end
