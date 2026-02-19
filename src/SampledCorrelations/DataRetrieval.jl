@@ -31,6 +31,37 @@ function pruned_wave_vector_info(sc::SampledCorrelations, qs)
 end
 
 
+function pruned_wave_vector_info(sc::SampledTimeCorrelations, qs)
+
+    # Round to the nearest wavevector and wrapped index
+    Ls = size(sc.samplebuf)[2:4]
+    ms = map(qs) do q 
+        round.(Int, Ls .* q)
+    end
+    idcs = map(ms) do m
+        CartesianIndex{3}(map(i -> mod(m[i], Ls[i])+1, (1, 2, 3)))
+    end
+
+    # Convert to absolute units (for form factors)
+    qabs_rounded = map(m -> sc.crystal.recipvecs * (m ./ sc.sys_dims), ms)
+
+    # List of "starting" pointers i where qabs_rounded[i-1] != qabs_rounded[i],
+    # i.e., indices where the desired wave vector is distinct from the previous
+    # one.
+    starts = findall(i -> i == 1 || !isapprox(qabs_rounded[i-1], qabs_rounded[i]), eachindex(qabs_rounded))
+
+    # Length of each run of repeated values
+    counts = starts[2:end] - starts[1:end-1]
+    append!(counts, length(idcs) - starts[end] + 1)
+
+    # Remove contiguous repetitions
+    qabs = qabs_rounded[starts]
+    idcs = idcs[starts]
+
+    return (; qabs, idcs, counts)
+end
+
+
 # Crude slow way to find the energy axis index closest to some given energy.
 function find_idx_of_nearest_fft_energy(ref, val)
     for i in axes(ref[1:end-1], 1)
@@ -215,4 +246,38 @@ function broaden_energy(sc::SampledCorrelations, is, kernel::Function; negative_
 end
 =#
 
+
+
+# Documented under intensities function for SWT. TODO: As a hack, this function
+# is also being used as the back-end to intensities_static.
+function intensities(sc::SampledTimeCorrelations, qpts; )
+    println("Quantum-classical correction not being perfomed")
+    # Determine t information
+    nts = sc.nts
+    ts = 1:nts
+
+
+    # Prepare memory and configuration variables for actual calculation
+    qpts = Base.convert(AbstractQPoints, qpts)
+    qs_reshaped = [to_reshaped_rlu(sc, q) for q in qpts.qs]
+
+
+    intensities = zeros(eltype(sc.measure), 1 : length(ts), length(qpts.qs)) # N.B.: Inefficient indexing order to mimic SWT
+    q_idx_info = pruned_wave_vector_info(sc, qs_reshaped)
+    crystal = @something sc.origin_crystal sc.crystal
+    NCorr  = Val{size(sc.data, 1)}()
+    # NPos = Val{size(sc.data, 2)}()
+    NPos = Val{length(sc.crystal.positions)}()
+    ffs = sc.measure.formfactors[1, :]
+
+    # Intensities calculation
+    intensities_aux!(intensities, sc.data, sc.crystal, sc.positions, sc.measure.combiner, ffs, q_idx_info, ts, NCorr, NPos)
+
+    # Convert to a q-space density in original (not reshaped) RLU.
+    intensities .*= det(sc.crystal.recipvecs) / det(crystal.recipvecs)
+
+    intensities = reshape(intensities, length(ts), size(qpts.qs)...)
+
+    return Intensities(crystal, qpts, collect(Float64.(ts)), intensities)
+end
 

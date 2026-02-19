@@ -178,6 +178,11 @@ function to_reshaped_rlu(sc::SampledCorrelations, q)
     return sc.crystal.recipvecs \ orig_cryst.recipvecs * q
 end
 
+function to_reshaped_rlu(sc::SampledTimeCorrelations, q)
+    orig_cryst = @something sc.origin_crystal sc.crystal
+    return sc.crystal.recipvecs \ orig_cryst.recipvecs * q
+end
+
 """
     SampledCorrelations(sys::System; measure, energies, dt)
 
@@ -286,7 +291,7 @@ mutable struct SampledTimeCorrelations
 
     # Trajectory specs
     const integrator   :: AbstractIntegrator                     # Integrator for calculating sample trajectories.
-    const nts          :: Float64                                # Total time steps.
+    const nts          :: Int                                # Total time steps.
     const measperiod   :: Int                                    # number of steps between snapshots
     nsamples           :: Int64                                  # Number of accumulated samples (single number saved as array for mutability)
 
@@ -302,14 +307,14 @@ function Base.show(io::IO, ::SampledTimeCorrelations)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", sc::SampledTimeCorrelations)
-    (; crystal, nsamples) = sc
+    (; crystal, nsamples,nts) = sc
     nω = round(Int, size(sc.data)[7]/2)
     sys_dims = size(sc.data[4:6])
     printstyled(io, "SampledTimeCorrelations"; bold=true, color=:underline)
     println(io," ($(Base.format_bytes(Base.summarysize(sc))))")
     print(io,"[")
     printstyled(io,"S(q,t)"; bold=true)
-    print(io," | nts = $nts, dt = $(round(sc.st, digits=4))")
+    print(io," | nts = $nts, dt = $(round(sc.dt, digits=4))")
     println(io," | $nsamples $(nsamples > 1 ? "samples" : "sample")]")
     println(io,"Lattice: $sys_dims × $(natoms(crystal))")
 end

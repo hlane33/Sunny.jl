@@ -201,7 +201,7 @@ end
 
 
 function accum_sample!(sc::SampledTimeCorrelations; )
-    (; data, M, corr_pairs, samplebuf, corrbuf, space_fft!) = sc
+    (; data, M, corr_pairs, samplebuf, corrbuf, space_fft!,nts) = sc
     npos = size(samplebuf)[5]
 
     # Transform A(q) = ∑ exp(iqr) A(r).
