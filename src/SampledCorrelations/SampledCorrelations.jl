@@ -287,6 +287,7 @@ mutable struct SampledTimeCorrelations
     # Trajectory specs
     const integrator   :: AbstractIntegrator                     # Integrator for calculating sample trajectories.
     const nts          :: Float64                                # Total time steps.
+    const measperiod   :: Int                                    # number of steps between snapshots
     nsamples           :: Int64                                  # Number of accumulated samples (single number saved as array for mutability)
 
     # Buffers and precomputed data 
@@ -327,7 +328,7 @@ function Base.setproperty!(sc::SampledTimeCorrelations, sym::Symbol, val)
     end
 end
 
-function SampledTimeCorrelations(sys::System; measure, dt, nts, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
+function SampledTimeCorrelations(sys::System; measure,measperiod=1, dt, nts, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
     isnan(integrator.dt) || error("Timestep of `integrator` must be uninitialized.")
     integrator.dt = dt
 
@@ -374,7 +375,7 @@ function SampledTimeCorrelations(sys::System; measure, dt, nts, calculate_errors
     origin_crystal = isnothing(sys.origin) ? nothing : sys.origin.crystal
     sc = SampledTimeCorrelations(data, M, sys.crystal, origin_crystal, dt,
                              measure, copy(measure.observables), positions, atom_idcs, copy(measure.corr_pairs),
-                             integrator, nts, nsamples,
+                             integrator, nts,measperiod, nsamples,
                              samplebuf, corrbuf, space_fft!)
 
     return sc

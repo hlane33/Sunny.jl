@@ -189,7 +189,7 @@ function add_sample!(sc::SampledTimeCorrelations, sys::System)
 end
 
 function new_sample!(sc::SampledTimeCorrelations, sys::System)
-    (; integrator, samplebuf, nts, observables, atom_idcs) = sc
+    (; integrator, samplebuf,measperiod, nts, observables, atom_idcs) = sc
     nsnaps = nts
 
     # @assert size(sys.dipoles) == size(samplebuf)[2:5] "`System` size not compatible with given `SampledCorrelations`"
@@ -200,10 +200,9 @@ function new_sample!(sc::SampledTimeCorrelations, sys::System)
 end
 
 
-function accum_sample!(sc::SampledTimeCorrelations; window)
+function accum_sample!(sc::SampledTimeCorrelations; )
     (; data, M, corr_pairs, samplebuf, corrbuf, space_fft!) = sc
     npos = size(samplebuf)[5]
-    num_time_offsets = size(samplebuf, 6)
 
     # Transform A(q) = ∑ exp(iqr) A(r).
     # This is opposite to the FFTW convention, so we must conjugate
