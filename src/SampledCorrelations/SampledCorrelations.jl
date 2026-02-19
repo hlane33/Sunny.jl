@@ -286,7 +286,7 @@ mutable struct SampledTimeCorrelations
 
     # Trajectory specs
     const integrator   :: AbstractIntegrator                     # Integrator for calculating sample trajectories.
-    const measperiod   :: Int                                    # Steps to skip between saving observables (i.e., downsampling factor for trajectories)
+    const nts          :: Float64                                # Total time steps.
     nsamples           :: Int64                                  # Number of accumulated samples (single number saved as array for mutability)
 
     # Buffers and precomputed data 
@@ -327,7 +327,7 @@ function Base.setproperty!(sc::SampledTimeCorrelations, sym::Symbol, val)
     end
 end
 
-function SampledTimeCorrelations(sys::System; measure, dt, measperiod, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
+function SampledTimeCorrelations(sys::System; measure, dt, nts, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
     isnan(integrator.dt) || error("Timestep of `integrator` must be uninitialized.")
     integrator.dt = dt
 
@@ -351,11 +351,11 @@ function SampledTimeCorrelations(sys::System; measure, dt, measperiod, calculate
 
     measure = isnothing(measure) ? ssf_trace(sys) : measure
     num_observables(measure)
-    samplebuf = zeros(ComplexF64, num_observables(measure), sys.dims..., npos, n_all_ω)
-    corrbuf = zeros(ComplexF64, sys.dims..., n_all_ω)
+    samplebuf = zeros(ComplexF64, num_observables(measure), sys.dims..., npos, nts)
+    corrbuf = zeros(ComplexF64, sys.dims..., nts)
 
-    # The output data has n_all_ω many (positive and negative and zero) frequencies
-    data = zeros(ComplexF64, num_correlations(measure), npos, npos, sys.dims..., n_all_ω)
+    # The output data has nts many frequencies
+    data = zeros(ComplexF64, num_correlations(measure), npos, npos, sys.dims..., nts)
     M = calculate_errors ? zeros(Float64, size(data)...) : nothing
 
     # The normalization is defined so that the prod(sys.dims)-many estimates of
@@ -374,7 +374,7 @@ function SampledTimeCorrelations(sys::System; measure, dt, measperiod, calculate
     origin_crystal = isnothing(sys.origin) ? nothing : sys.origin.crystal
     sc = SampledTimeCorrelations(data, M, sys.crystal, origin_crystal, dt,
                              measure, copy(measure.observables), positions, atom_idcs, copy(measure.corr_pairs),
-                             integrator, measperiod, nsamples,
+                             integrator, nts, nsamples,
                              samplebuf, corrbuf, space_fft!)
 
     return sc
