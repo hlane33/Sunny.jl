@@ -5,6 +5,7 @@ mutable struct SampledCorrelations
     const crystal        :: Crystal                              # Crystal for interpretation of q indices in `data`
     const origin_crystal :: Union{Nothing,Crystal}               # Original user-specified crystal (if different from above)
     const Δω             :: Float64                              # Energy step size 
+    const time_dynamics  :: Bool
 
     # Observable information
     measure            :: MeasureSpec                            # Storehouse for combiner. Mutable so combiner can be changed.
@@ -198,7 +199,7 @@ can can then be extracted as pair-correlation [`intensities`](@ref) with
 appropriate classical-to-quantum correction factors. See also
 [`intensities_static`](@ref), which integrates over energy.
 """
-function SampledCorrelations(sys::System; measure, energies, dt, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
+function SampledCorrelations(sys::System; measure, energies, dt, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint(),time_dynamics=false)
     if isnothing(energies)
         n_all_ω = 1
         measperiod = 1
@@ -262,7 +263,7 @@ function SampledCorrelations(sys::System; measure, energies, dt, calculate_error
 
     # Make Structure factor and add an initial sample
     origin_crystal = isnothing(sys.origin) ? nothing : sys.origin.crystal
-    sc = SampledCorrelations(data, M, sys.crystal, origin_crystal, Δω,
+    sc = SampledCorrelations(data, M, sys.crystal, origin_crystal, Δω, time_dynamics,
                              measure, copy(measure.observables), positions, atom_idcs, copy(measure.corr_pairs),
                              integrator, measperiod, nsamples,
                              samplebuf, corrbuf, space_fft!, time_fft!, corr_fft!, corr_ifft!)
@@ -270,118 +271,3 @@ function SampledCorrelations(sys::System; measure, energies, dt, calculate_error
     return sc
 end
 
-
-mutable struct SampledTimeCorrelations
-    # 𝒮^{αβ}(q,ω) data and metadata
-    const data           :: Array{ComplexF64, 7}                 # Raw SF with sublattice indices (ncorrs × natoms × natoms × sys_dims × nsnaps)
-    const M              :: Union{Nothing, Array{Float64, 7}}    # Running estimate of (nsamples - 1)*σ² (where σ² is the variance of intensities)
-    const crystal        :: Crystal                              # Crystal for interpretation of q indices in `data`
-    const origin_crystal :: Union{Nothing,Crystal}               # Original user-specified crystal (if different from above)
-    const dt             :: Float64                              # Time step size 
-
-    # Observable information
-    measure            :: MeasureSpec                            # Storehouse for combiner. Mutable so combiner can be changed.
-    const observables  # :: Array{Op, 5}                         # (nobs × npos x latsize) -- note change of ordering relative to MeasureSpec. TODO: determine type strategy
-    const positions    :: Array{Vec3, 4}                         # Position of each operator in fractional coordinates (latsize x npos)
-    const atom_idcs    :: Array{Int64, 4}                        # Atom index corresponding to position of observable.
-    const corr_pairs   :: Vector{NTuple{2, Int}}                 # (ncorr)
-
-    # Trajectory specs
-    const integrator   :: AbstractIntegrator                     # Integrator for calculating sample trajectories.
-    const nsnaps       :: Int                                    # Total time steps.
-    const measperiod   :: Int                                    # number of steps between snapshots
-    nsamples           :: Int64                                  # Number of accumulated samples (single number saved as array for mutability)
-
-    # Buffers and precomputed data 
-    const samplebuf    :: Array{ComplexF64, 6}                   # Buffer for observables (nobservables × sys_dims × natoms × nsnapshots)
-    const corrbuf      :: Array{ComplexF64, 4}                   # Buffer for correlations (sys_dims × nts)
-    const space_fft!   :: FFTW.AbstractFFTs.Plan                 # Pre-planned lattice FFT for samplebuf
-end
-
-function Base.show(io::IO, ::SampledTimeCorrelations)
-    print(io, "SampledTimeCorrelations")
-    # TODO: Add correlation info?
-end
-
-function Base.show(io::IO, ::MIME"text/plain", sc::SampledTimeCorrelations)
-    nω = round(Int, size(sc.data)[7]/2)
-    sys_dims = size(sc.data[4:6])
-    printstyled(io, "SampledTimeCorrelations"; bold=true, color=:underline)
-    println(io," ($(Base.format_bytes(Base.summarysize(sc))))")
-    print(io,"[")
-    printstyled(io,"S(q,t)"; bold=true)
-    print(io," | nsnaps = $(sc.nsnaps), measperiod = $(sc.measperiod), dt = $(round(sc.dt, digits=4))")
-    println(io," | $(sc.nsamples) $(sc.nsamples > 1 ? "samples" : "sample")]")
-    println(io,"Lattice: $(sc.sys_dims) × $(natoms(sc.crystal))")
-end
-
-function Base.getproperty(sc::SampledTimeCorrelations, sym::Symbol)
-    return sym == :sys_dims ? size(sc.samplebuf)[2:4] : getfield(sc, sym)
-end
-
-function Base.setproperty!(sc::SampledTimeCorrelations, sym::Symbol, val)
-    if sym == :measure
-        @assert sc.measure.observables ≈ val.observables "New MeasureSpec must contain identical observables."
-        @assert all(x -> x == 1, sc.measure.corr_pairs .== val.corr_pairs) "New MeasureSpec must contain identical correlation pairs."
-        setfield!(sc, :measure, val)
-    else
-        setfield!(sc, sym, val)
-    end
-end
-
-function SampledTimeCorrelations(sys::System; measure,measperiod, dt, nsnaps, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint())
-    isnan(integrator.dt) || error("Timestep of `integrator` must be uninitialized.")
-    integrator.dt = dt
-
-    # Determine the positions of the observables in the MeasureSpec. By default,
-    # these will just be the atom indices. 
-    positions = if isnothing(positions)
-        map(eachsite(sys)) do site
-            sys.crystal.positions[site.I[4]]
-        end
-    else
-        positions
-    end
-
-    # Determine the number of positions. For an unentangled system, this will
-    # just be the number of atoms.
-    npos = size(positions, 4) 
-
-    # Determine which atom index is used to derive information about a given
-    # physical position. This becomes relevant for entangled units. 
-    atom_idcs = map(site -> site.I[4], eachsite(sys))
-
-    measure = isnothing(measure) ? ssf_trace(sys) : measure
-    num_observables(measure)
-    samplebuf = zeros(ComplexF64, num_observables(measure), sys.dims..., npos, nsnaps)
-    corrbuf = zeros(ComplexF64, sys.dims..., nsnaps)
-
-    # The output data has nts many frequencies
-    data = zeros(ComplexF64, num_correlations(measure), npos, npos, sys.dims..., nsnaps)
-    M = calculate_errors ? zeros(Float64, size(data)...) : nothing
-
-    # The normalization is defined so that the prod(sys.dims)-many estimates of
-    # the structure factor produced by the correlation conj(space_fft!) *
-    # space_fft! are correctly averaged over. The corresponding time-average
-    # can't be applied in the same way because the number of estimates varies
-    # with Δt. These conventions ensure consistency with this spec:
-    # https://sunnysuite.github.io/Sunny.jl/dev/structure-factor.html
-    space_fft! = 1/√prod(sys.dims) * FFTW.plan_fft!(samplebuf, (2,3,4))
-
-    # Initialize nsamples to zero. Make an array so can update dynamically
-    # without making struct mutable.
-    nsamples = 0 
-
-    # Make Structure factor and add an initial sample
-    origin_crystal = isnothing(sys.origin) ? nothing : sys.origin.crystal
-    sc = SampledTimeCorrelations(data, M, sys.crystal, origin_crystal, dt,
-                             measure, copy(measure.observables), positions, atom_idcs, copy(measure.corr_pairs),
-                             integrator, nsnaps,measperiod, nsamples,
-                             samplebuf, corrbuf, space_fft!)
-
-    return sc
-end
-function to_reshaped_rlu(sc::SampledTimeCorrelations, q)
-    orig_cryst = @something sc.origin_crystal sc.crystal
-    return sc.crystal.recipvecs \ orig_cryst.recipvecs * q
-end

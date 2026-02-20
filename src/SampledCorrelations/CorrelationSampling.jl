@@ -32,7 +32,6 @@ end
 
 function new_sample!(sc::SampledCorrelations, sys::System)
     (; integrator, samplebuf, measperiod, observables, atom_idcs) = sc
-
     # Only fill the sample buffer half way; the rest is zero-padding
     buf_size = size(samplebuf, 6)
     nsnaps = (buf_size÷2) + 1
@@ -45,8 +44,15 @@ function new_sample!(sc::SampledCorrelations, sys::System)
     return nothing
 end
 
-function accum_sample!(sc::SampledCorrelations; window)
+function accum_sample!(sc::SampledCorrelations; window,time_dynamics)
     (; data, M, corr_pairs, samplebuf, corrbuf, space_fft!, time_fft!, corr_fft!, corr_ifft!) = sc
+
+    if time_dynamics == true
+        apply_final_fft! = 1.
+        window = nothing
+    else
+        apply_final_fft! = corr_fft!
+    end
     npos = size(samplebuf)[5]
     num_time_offsets = size(samplebuf, 6)
     T = (num_time_offsets÷2) + 1 # Duration that each signal was recorded for
@@ -94,7 +100,7 @@ function accum_sample!(sc::SampledCorrelations; window)
         corr_ifft! * corrbuf
         corrbuf ./= n_contrib
 
-        @assert window in (:cosine, :rectangular)
+        # @assert window in (:cosine, :rectangular) #remove windowing for S(q,t)
         if window == :cosine
             # Multiply the real-time correlation data by a cosine window that
             # smoothly goes to zero at offsets approaching the trajectory
@@ -106,7 +112,7 @@ function accum_sample!(sc::SampledCorrelations; window)
             corrbuf .*= reshape(window_func, 1, 1, 1, num_time_offsets)
         end
 
-        corr_fft! * corrbuf
+        apply_final_fft! * corrbuf   # remove this for S(q,t)
 
         if isnothing(M)
             for k in eachindex(databuf)
@@ -170,88 +176,12 @@ function add_sample!(sc::SampledCorrelations, sys::System; window=:cosine)
     # 
     # The hidden option `window=:rectangular` will disable smooth windowing.
     # This may be of interest for extracting real-time dynamical correlations.
+    time_dynamics = sc.time_dynamics
 
     new_sample!(sc, sys)
-    accum_sample!(sc; window)
+    accum_sample!(sc; window,time_dynamics)
 end
 
 function add_sample!(sc::SampledCorrelationsStatic, sys::System; window=:cosine)
     add_sample!(sc.parent, sys; window)
-end
-
-
-function add_sample!(sc::SampledTimeCorrelations, sys::System)
-    # Sunny now estimates the dynamical structure factor in two steps. First, it
-    # estimates real-time correlations C(t) = ⟨S(t)S(0)⟩ from classical
-    # dynamics. We stop here for time correlations.
-    new_sample!(sc, sys)
-    accum_sample!(sc; )
-end
-
-function new_sample!(sc::SampledTimeCorrelations, sys::System)
-    (; integrator, samplebuf,measperiod, nsnaps, observables, atom_idcs) = sc
-
-    # @assert size(sys.dipoles) == size(samplebuf)[2:5] "`System` size not compatible with given `SampledCorrelations`"
-
-    trajectory!(samplebuf, sys, integrator, nsnaps, observables, atom_idcs; measperiod)
-
-    return nothing
-end
-
-
-function accum_sample!(sc::SampledTimeCorrelations; )
-    (; data, M, corr_pairs, samplebuf, corrbuf, space_fft!,nsnaps) = sc
-    npos = size(samplebuf)[5]
-
-    # Transform A(q) = ∑ exp(iqr) A(r).
-    # This is opposite to the FFTW convention, so we must conjugate
-    # the fft by a complex conjugation to get the correct sign.
-    samplebuf .= conj.(samplebuf)
-    space_fft! * samplebuf
-    samplebuf .= conj.(samplebuf)
-
-
-    count = sc.nsamples += 1
-
-    for j in 1:npos, i in 1:npos, (c, (α, β)) in enumerate(corr_pairs)
-        # α, β = ci.I
-
-        sample_α = @view samplebuf[α,:,:,:,i,:]
-        sample_β = @view samplebuf[β,:,:,:,j,:]
-        databuf  = @view data[c,i,j,:,:,:,:]
-
-        # According to Sunny convention, the correlation is between
-        # α† and β. This conjugation implements both the dagger on the α
-        # as well as the appropriate spacetime offsets of the correlation.
-        @. corrbuf = conj(sample_α) * sample_β
-        # corrbuf ./= nsnaps  # don't think this is right - why would we divide by nsnaps
-
-        if isnothing(M)
-            for k in eachindex(databuf)
-                # Store the diff for one complex number on the stack.
-                diff = corrbuf[k] - databuf[k]
-
-                # Accumulate into running average
-                databuf[k] += diff * (1/count)
-            end
-        else
-            Mbuf = @view M[c,i,j,:,:,:,:]
-            for k in eachindex(databuf)
-                # Store old (complex) mean on stack.
-                μ_old = databuf[k]
-
-                # Update running mean.
-                databuf[k] += (corrbuf[k] - databuf[k]) / count
-                μ = databuf[k]
-
-                # Update variance estimate.
-                # Note that the first term of `diff` is real by construction
-                # (despite appearances), but `real` is explicitly called to
-                # avoid automatic typecasting errors caused by roundoff.
-                Mbuf[k] += real((corrbuf[k] - μ_old)*conj(corrbuf[k] - μ))
-            end
-        end
-    end
-
-    return nothing
 end
