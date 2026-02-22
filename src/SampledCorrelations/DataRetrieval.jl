@@ -80,6 +80,11 @@ function intensities(sc::SampledCorrelations, qpts; energies, kernel=nothing, kT
     if !isnothing(kernel)
         error("Kernel post-processing not yet available for `SampledCorrelations`.")
     end
+    if typeof(sc.integrator)  <: LocalSampler
+        dt = 0.01
+    else
+        dt = sc.integrator.dt
+    end
         
     # Determine energy information
     (ωs, ωidcs) = if energies == :available
@@ -135,7 +140,7 @@ function intensities(sc::SampledCorrelations, qpts; energies, kernel=nothing, kT
     if sc.time_dynamics == true
         num_time_offsets = size(sc.samplebuf, 6)
         T = (num_time_offsets÷2) + 1 # Duration that each signal was recorded for
-        ωs = range(0,T,length = length(ωs)).* sc.integrator.dt
+        ωs = range(0,T,length = length(ωs)).* dt
     end
 
     return if contains_dynamic_correlations(sc) 

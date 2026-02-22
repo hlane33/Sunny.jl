@@ -15,7 +15,7 @@ mutable struct SampledCorrelations
     const corr_pairs   :: Vector{NTuple{2, Int}}                 # (ncorr)
 
     # Trajectory specs
-    const integrator   :: AbstractIntegrator                     # Integrator for calculating sample trajectories.
+    const integrator                                             # Integrator for calculating sample trajectories.
     const measperiod   :: Int                                    # Steps to skip between saving observables (i.e., downsampling factor for trajectories)
     nsamples           :: Int64                                  # Number of accumulated samples (single number saved as array for mutability)
 
@@ -199,7 +199,7 @@ can can then be extracted as pair-correlation [`intensities`](@ref) with
 appropriate classical-to-quantum correction factors. See also
 [`intensities_static`](@ref), which integrates over energy.
 """
-function SampledCorrelations(sys::System; measure, energies, dt, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint(),time_dynamics=false)
+function SampledCorrelations(sys::System; measure, energies, dt, calculate_errors=false, positions=nothing, integrator=ImplicitMidpoint(),time_dynamics=false,measperiod_override=nothing,nts=nothing)
     if isnothing(energies)
         n_all_ω = 1
         measperiod = 1
@@ -216,9 +216,14 @@ function SampledCorrelations(sys::System; measure, energies, dt, calculate_error
         Δω = ωmax/(nω-1)
     end
 
-    isnan(integrator.dt) || error("Timestep of `integrator` must be uninitialized.")
-    integrator.dt = dt
-
+    if typeof(integrator)  <: LocalSampler
+        nω = nts 
+        n_all_ω = 2(Int(nω) - 1)
+        measperiod = measperiod_override
+    else
+        isnan(integrator.dt) || error("Timestep of `integrator` must be uninitialized.")
+        integrator.dt = dt
+    end
     # Determine the positions of the observables in the MeasureSpec. By default,
     # these will just be the atom indices. 
     positions = if isnothing(positions)
