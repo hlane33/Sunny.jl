@@ -98,62 +98,6 @@ true value will depend on the size/shape of the sample. The integral is performe
 to cover the 1BZ. In future we will want to sample more finely at small q. We can probably restrict the integral to a small area around q=[0,0,0]. 
 """
 
-
-# function noise_spectral_function(sys,ωs,n,z;method="LSWT",Nq = 10,kT=0,dt = 0.1,nsamples = 3, ndwell=100)
-#     dq = 1/Nq
-#     qs = -1/2 : dq : 1/2 - dq 
-#     qgrid =  [[qx,qy,0] for qx ∈ qs, qy ∈ qs]
-#     Nqs = length(qgrid)
-#     nhat = norm(n)
-#     measure = ssf_custom((q, ssf) -> ssf,sys;  apply_g=false)
-#     kernel = lorentzian(fwhm=0.1)
-#     if method == "LSWT"
-#         swt = SpinWaveTheory(sys;measure)
-#         res = intensities(swt, qgrid[:]; energies=ωs, kernel,kT)
-#     elseif method == "LLD"
-#         kT == 0 ? error("Please provide finite temperature for LLD.") : nothing
-#         langevin = Langevin(dt; damping=0.2, kT)
-#         (zer,ωmin)= findmin(norm.(ωs))
-#         sc = SampledCorrelations(sys; dt, energies=pos_ωs, measure)
-#         for _ in 1:nsamples
-#             for _ in 1:ndwell
-#                 step!(sys, langevin)
-#             end
-#             add_sample!(sc, sys)
-#         end
-#         res = intensities(sc, qgrid[:]; energies=pos_ωs, kT)
-#     else
-#         error("Please provide a valid method: LLD or LSWT, with appropriate kwargs.")
-#     end
-#     Dμα = Sunny.dipole_field(sys,qgrid[:],z)
-#     Dνβ = Sunny.dipole_field(sys,-qgrid[:],z)
-#     Sqw = res.data
-#     Nαβ = zeros(ComplexF64,3,3,length(qgrid),length(ωs))
-#     for (wi,w) ∈ enumerate(ωs)
-#         for qi ∈ 1:length(qgrid)
-#             buff = zeros(ComplexF64,3,3)
-#             for (μ,nμ) ∈ enumerate(nhat)
-#                 for (ν,nν) ∈ enumerate(nhat)
-#                     for α = 1:3
-#                         for β = 1:3
-#                             buff[α,β] += nν*nμ*Dμα[μ,α,qi]*Dνβ[ν,β,qi]*Sqw[wi,qi][α,β]
-#                         end
-#                     end
-#                 end
-#             end
-#             if isnan(sum(buff))
-#                 # bad_q = qgrid[qi]
-#                 # println("NaN at $bad_q")
-#             else
-#                 Nαβ[:,:,qi,wi] .= buff
-#             end
-#         end
-#     end
-#     out = (1/Nqs)*(2*0.6745817653)^2*sum(Nαβ;dims = 1:3)
-#     return out[1,1,1,:]
-# end
-
-
 # function that takes S(q,w) data and calculates Nμν(w)
 function noise_spectral_function(sqw::Intensities,n,z) #negative values for LSWT not showing!
     nhat = n/norm(n)
