@@ -48,11 +48,12 @@ function partial_noise_spectral_function(sqw::Intensities,z) #negative values fo
             for α=1:3
                 for β=1:3
                     momentum_filter = dipole_field_data[μ,α,:] .* dipole_field_minus_data[ν,β,:]
-                    noise_array[μ,ν,:,:] =.+ transpose(momentum_filter) .* Sqw_data[α,β,:,:]
+                    momentum_filter = reshape(momentum_filter, 1, :)
+                    noise_array[μ,ν,:,:] .+= momentum_filter .* Sqw_data[α,β,:,:]
                 end
             end
         end
-    end 
+    end
     noise= (1/Nqs)*sum(noise_array;dims=4)*(2*0.6745817653/0.05788381806)^2 # assume g =2
     return noise[:,:,:,1], energies
 end
