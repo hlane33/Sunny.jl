@@ -20,10 +20,11 @@ function dipole_field(sys::System,qs,z)
 end
 
 function dipole_field(cryst::Crystal,qs,z)
+    regularization = 1e-7
     H = zeros(ComplexF64,3,3,length(qs))
     for (qi,q) ∈ enumerate(qs)
         V2d = abs(det(cryst.latvecs[1:2,1:2]))
-        q_global = cryst.recipvecs * q
+        q_global = cryst.recipvecs * q + [1,1.,1.] * regularization
         λ = norm(q_global) # assume ω << c
         H[:,:,qi]=(exp(-λ*z)/(2V2d))*[(q_global[1]^2)/λ  (q_global[1]*q_global[2])/λ   im*q_global[1]
         (q_global[1]*q_global[2])/λ   (q_global[2]^2)/λ im*q_global[2]
@@ -205,9 +206,9 @@ function momentum_filter_test(sys,q,z)
     cryst = Sunny.orig_crystal(sys)
     q_glob = cryst.recipvecs * q[1]
     te=-(1/2)*exp(-norm(q_glob)*z)*norm(q_glob)
-    # println("Expected dipole zz term: $te")
-    # dipoleval = Dμα[1][3,3]
-    # println("Dipole zz term: $dipoleval" )
+    println("Expected dipole zz term: $te")
+    dipoleval = Dμα[3,3,1]
+    println("Dipole zz term: $dipoleval" )
     W= Dμα[3,3,1]*Dνβ[3,3,1]
     out = ((2*0.6745817653/0.05788381806)^2)*W
     return out
