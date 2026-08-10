@@ -92,6 +92,7 @@ mutable struct ElectronicInteractions
     # Onsite coupling is either an N×N Hermitian matrix or possibly renormalized
     # Stevens coefficients, depending on the mode :SUN or :dipole.
     onsite :: Vector{Float64}
+    hubbard :: Float64
     # Pair couplings for every bond that starts at the given atom
     pair :: Vector{ElectronicPairCoupling}
 end

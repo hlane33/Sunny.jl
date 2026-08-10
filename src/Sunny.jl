@@ -130,6 +130,8 @@ include("SCGA/SCGA.jl")
 export SCGA, magnetic_susceptibility_per_site
 
 include("RPA/RPA_aliasing.jl")
+include("RPA/RPA_hamiltonian.jl")
+include("RPA/RPA_interactions.jl")
 
 include("EntangledUnits/TypesAndAliasing.jl")
 include("EntangledUnits/EntangledUnits.jl")
