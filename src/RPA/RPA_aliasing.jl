@@ -348,3 +348,39 @@ function sites_to_internal_bond(sys::ElectronicSystem, site1::CartesianIndex{4},
                  Try using a bigger system size, or pass an explicit offset.""")
     end
 end
+
+function set_onsite_potential!(sys::ElectronicSystem, V::Vector{Float64}, i::Int)
+    is_homogeneous(sys) || error("Use `set_onsite_potential_at!` for an inhomogeneous system.")
+    ints = interactions_homog(sys)
+
+    # If `sys` has been reshaped, then operate first on `sys.origin`, which
+    # contains full symmetry information.
+    if !isnothing(sys.origin)
+        set_onsite_potential!(sys.origin, V, i)
+        transfer_interactions!(sys, sys.origin)
+        return
+    end
+
+    @assert isnothing(sys.origin)
+    (1 <= i <= natoms(sys.crystal)) || error("Atom index $i is out of range.")
+
+    if !iszero(ints[i].onsite)
+        println("Overriding potential for atom $i.")
+    end
+
+    onsite = V
+
+
+    cryst = sys.crystal
+    for j in all_symmetry_related_atoms(cryst, i)
+        ints[j].onsite = onsite
+    end
+end
+
+function set_onsite_potential_at!(sys::ElectronicSystem, V, site::Site)
+    is_homogeneous(sys) && error("Use `to_inhomogeneous` first.")
+
+    ints = interactions_inhomog(sys)
+    site = to_cartesian(site)
+    ints[site].onsite = V
+end
