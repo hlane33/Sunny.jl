@@ -290,3 +290,61 @@ function resize_supercell(sys::ElectronicSystem, latsize::NTuple{3,Int})
     return reshape_supercell(sys, diagm(collect(latsize)))
 end
 
+function set_hopping_at_aux!(sys::ElectronicSystem, hopping::Float64, site1::Site, site2::Site, offset)
+    is_homogeneous(sys) && error("Use `to_inhomogeneous` first.")
+    # (is_vacant(sys, site1) || is_vacant(sys, site2)) && error("Cannot couple vacant site") # Haven't added vacancies yet
+    ints = interactions_inhomog(sys)
+
+
+    site1 = to_cartesian(site1)
+    site2 = to_cartesian(site2)
+    bond = sites_to_internal_bond(sys, site1, site2, offset)
+
+    replace_coupling!(ints[site1].pair, ElectronicPairCoupling(bond, hopping))
+    replace_coupling!(ints[site2].pair, ElectronicPairCoupling(reverse(bond), hopping))
+end
+
+function set_hopping_at!(sys::ElectronicSystem, hopping::Float64, site1::Site, site2::Site; offset=nothing) 
+    set_hopping_at_aux!(sys, hopping, site1, site2, offset)
+    return
+end
+
+function sites_to_internal_bond(sys::ElectronicSystem, site1::CartesianIndex{4}, site2::CartesianIndex{4}, n_ref) 
+    (; crystal, dims) = sys
+
+    n0 = to_cell(site2) .- to_cell(site1)
+
+    # Try to build a bond with the provided offset n_ref
+    if !isnothing(n_ref)
+        if all(iszero, mod.(n_ref .- n0, dims))
+            return Bond(to_atom(site1), to_atom(site2), n_ref)
+        else
+            cell1 = to_cell(site1)
+            cell2 = to_cell(site2)
+            error("""Cells $cell1 and $cell2 are not compatible with the offset
+                     $n_ref for a system with dimensions $dims.""")
+        end
+    end
+
+    # Otherwise, search over all possible wrappings of the bond
+    ns = view([n0 .+ dims .* (i,j,k) for i in -1:1, j in -1:1, k in -1:1], :)
+    bonds = map(ns) do n
+        Bond(to_atom(site1), to_atom(site2), n)
+    end
+    distances = global_distance.(Ref(crystal), bonds)
+
+    # Indices of bonds, from smallest to largest
+    perm = sortperm(distances)
+
+    # If one of the bonds is much shorter than all others by some arbitrary
+    # `safety` factor, then return it
+    safety = 4
+    if safety * distances[perm[1]] < distances[perm[2]] - 1e-12
+        return bonds[perm[1]]
+    else
+        n1 = bonds[perm[1]].n
+        n2 = bonds[perm[2]].n
+        error("""Ambiguous offset vector. Possibilities include $n1 and $n2.
+                 Try using a bigger system size, or pass an explicit offset.""")
+    end
+end

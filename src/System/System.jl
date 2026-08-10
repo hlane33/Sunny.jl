@@ -119,6 +119,18 @@ function ElectronicSystem(crystal::Crystal;
     return dims == (1, 1, 1) ? ret : repeat_periodically(ret, dims)
 end
 
+function Base.show(io::IO, sys::ElectronicSystem) 
+    print(io, "System($(supercell_to_str(sys.dims, sys.crystal))")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", sys::ElectronicSystem) 
+    printstyled(io, "Electronic System \n"; bold=true, color=:underline)
+    println(io, supercell_to_str(sys.dims, sys.crystal))
+    if !isnothing(sys.origin) && cell_shape(sys) != cell_shape(sys.origin)
+        shape = number_to_math_string.(cell_shape(sys))
+        println(io, formatted_matrix(shape; prefix="Reshaped cell "))
+    end
+end
 
 function mode_to_str(sys::System{N}) where N
     if sys.mode == :SUN
