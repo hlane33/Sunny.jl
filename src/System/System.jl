@@ -106,9 +106,7 @@ function ElectronicSystem(crystal::Crystal;
 
     na = natoms(crystal)
     # TODO fix "empty_interactions for ElectronicSystem
-    interactions = empty_interactions(:dipole,na,0)
-    params = ModelParam[]
-    active_labels = Symbol[]
+    interactions = empty_interactions(na)
 
     extfield = zeros(Vec3, 1, 1, 1, na)
     mean_fields = fill(zero(Vec2), 1, 1, 1, na)
@@ -116,7 +114,7 @@ function ElectronicSystem(crystal::Crystal;
 
     rng = isnothing(seed) ? Random.Xoshiro(rand(UInt64, 4)...) : Random.Xoshiro(seed)
 
-    ret = ElectronicSystem(nothing, crystal, (1, 1, 1), params, active_labels,
+    ret = ElectronicSystem(nothing, crystal, (1, 1, 1),
                  interactions, extfield, mean_fields,  mean_field_buffers, rng)
     return dims == (1, 1, 1) ? ret : repeat_periodically(ret, dims)
 end

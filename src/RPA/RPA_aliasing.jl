@@ -1,11 +1,9 @@
 function clone_system(sys::ElectronicSystem)
     (; origin, crystal, dims, extfield, interactions_union,
-       params, active_labels, mean_fields, rng) = sys
+        mean_fields, rng) = sys
 
     origin_clone = isnothing(origin) ? nothing : clone_system(origin)
 
-    # Copy element-wise because each param has a mutable val
-    params_clone = copy.(params)
 
     # Dynamically dispatch to the correct `map` function for either homogeneous
     # (Vector) or inhomogeneous interactions (4D Array)
@@ -15,7 +13,7 @@ function clone_system(sys::ElectronicSystem)
     empty_mean_field_buffers = Array{Vec2, 4}[]
 
     ret = ElectronicSystem(origin_clone, crystal, dims,
-                 params_clone, active_labels, interactions_clone, copy(extfield),
+                  interactions_clone, copy(extfield),
                  copy(mean_fields), empty_mean_field_buffers
                  , copy(rng))
 
@@ -100,69 +98,25 @@ function get_mean_field_buffers(sys::ElectronicSystem, numrequested)
     return view(sys.mean_field_buffers, 1:numrequested)
 end
 
-
-function repopulate_couplings_from_params!(sys::ElectronicSystem)
-    @assert is_homogeneous(sys)
-    ints = interactions_homog(sys)
-
-    # If `sys` has been reshaped, then also repopulate `sys.origin` (useful for
-    # view_crystal(sys)).
-    if !isnothing(sys.origin)
-        repopulate_couplings_from_params!(sys.origin)
-    end
-
-    # Clear current interactions
-    for i in eachindex(ints)
-        ints[i].onsite = ints[i].onsite * 0.0
-        empty!(ints[i].pair)
-    end
-
-    # Accumulate from params
-    for param in sys.params
-        for (i, oc) in param.onsites
-            ints[i].onsite += oc * param.val
-        end
-
-        for pc in param.pairs
-            b = pc.bond
-            scaled_pc = pc * param.val
-            ints_pairs = ints[b.i].pair
-
-            # Find existing entry for this bond and accumulate
-            idx = findfirst(pc′ -> pc′.bond == b, ints_pairs)
-            if isnothing(idx)
-                push!(ints_pairs, scaled_pc)
-            else
-                ints_pairs[idx] += scaled_pc
-            end
-        end
-    end
-
-    # Non-culled couplings must come first to enable early `break`
-    for (; pair) in ints
-        sort!(pair, by = pc -> pc.isculled)
-    end
-end
-
 # TODO Figure this out - how are we doing anisotropies
 function empty_interactions(Na)
     # Cannot use `fill` because the PairCoupling arrays must be
     # allocated separately for later mutation.
     return map(1:Na) do _
-        Interactions(empty_anisotropy(), PairCoupling[])
+        ElectronicInteractions(empty_electronic_anisotropy(), PairCoupling[])
     end
 end
 
 function interactions_homog(sys::ElectronicSystem)
-    return sys.interactions_union :: Vector{Interactions}
+    return sys.interactions_union :: Vector{ElectronicInteractions}
 end
 
 function interactions_inhomog(sys::ElectronicSystem) 
-    return sys.interactions_union :: Array{Interactions, 4}
+    return sys.interactions_union :: Array{ElectronicInteractions, 4}
 end
 
 function is_homogeneous(sys::ElectronicSystem)
-    return sys.interactions_union isa Vector{Interactions}
+    return sys.interactions_union isa Vector{ElectronicInteractions}
 end
 
 function to_inhomogeneous(sys::ElectronicSystem) 
@@ -173,12 +127,10 @@ function to_inhomogeneous(sys::ElectronicSystem)
 
     # TODO: Zero out params and interactions of ret.origin?
 
-    # Params unsupported for inhomogeneous system
-    empty!(ret.params)
 
     # Population interactions_union as 4D array
     na = natoms(ret.crystal)
-    ret.interactions_union = Array{Interactions}(undef, ret.dims..., na)
+    ret.interactions_union = Array{ElectronicInteractions}(undef, ret.dims..., na)
     for site in eachsite(ret)
         ret.interactions_union[site] = clone_interactions(ints[to_atom(site)])
     end
@@ -196,9 +148,7 @@ end
 function reshape_supercell_aux(sys::ElectronicSystem, new_cryst::Crystal, new_dims::NTuple{3, Int}) 
     # Allocate data for new system, but with an empty list of interactions
     new_na               = natoms(new_cryst)
-    new_ints             = empty_interactions(:dipole, new_na, 0)
-    new_params           = ModelParam[]
-    new_ewald            = nothing
+    new_ints             = empty_interactions(new_na)
     new_extfield         = zeros(Vec3, new_dims..., new_na)
     new_mean_fields          = zeros(Vec2, new_dims..., new_na)
     new_mean_field_buffers   = Array{Vec2, 4}[]
@@ -209,21 +159,11 @@ function reshape_supercell_aux(sys::ElectronicSystem, new_cryst::Crystal, new_di
     orig_sys = clone_system(@something sys.origin sys)
 
     new_sys = ElectronicSystem(orig_sys, new_cryst, new_dims,
-                     new_params, sys.active_labels, new_ints, new_extfield,
+                    new_ints, new_extfield,
                      new_mean_fields, new_mean_field_buffers, 
                      copy(sys.rng))
 
-    if is_homogeneous(sys)
-        # Transfer params from `new_sys.origin`, which will then be used to fill
-        # interactions.
-        transfer_params_from_origin!(new_sys)
-    else
-        # Inhomogeneous interactions must be transferred directly. This path
-        # only exists to support SpinWaveTheory reshaping.
-        @assert new_sys.dims == (1, 1, 1)
-        @assert nsites(new_sys) == nsites(sys)
-        transfer_interactions_from_inhomogeneous!(new_sys, sys)
-    end
+    transfer_interactions!(new_sys, sys)
 
     # Copy per-site quantities
     for new_site in eachsite(new_sys)
@@ -236,45 +176,117 @@ function reshape_supercell_aux(sys::ElectronicSystem, new_cryst::Crystal, new_di
 end
 
 
-# TODO Fix this - just commented out whilst interactions not set up
-# Transfer interactions from `sys.origin` to reshaped `sys`.
-function transfer_params_from_origin!(sys::ElectronicSystem)
-    #=
-    @assert is_homogeneous(sys)
-    (; origin) = sys
-
-    # Map atom in origin crystal to vector of atoms in new crystal
-    origin_to_new = Dict(i => Int[] for i in 1:natoms(origin.crystal))
-    for new_i in 1:natoms(sys.crystal)
-        i = map_atom_to_other_crystal(sys.crystal, new_i, origin.crystal)
-        # Append `new_i` to the vector at `origin_to_new[i]`
-        push!(origin_to_new[i], new_i)
-    end
-
-    empty!(sys.params)
-
-    for param in origin.params
-        new_onsites = empty(param.onsites)
-        for (i, oc) in param.onsites
-            for new_i in origin_to_new[i]
-                push!(new_onsites, (new_i, oc))
-            end
-        end
-
-        new_pairs = PairCoupling[]
-        for pc in param.pairs
-            i_old = pc.bond.i
-            for new_i in origin_to_new[i_old]
-                new_bond = map_bond_to_other_crystal(origin.crystal, pc.bond, sys.crystal, new_i)
-                push!(new_pairs, PairCoupling(new_bond, pc.scalar, pc.bilin, pc.biquad, pc.general))
-            end
-        end
-
-        push!(sys.params, ModelParam(param.label, param.val, new_onsites, new_pairs))
-    end
-
-    repopulate_couplings_from_params!(sys)
-    return
-    =#
-    # DO NOTHING FOR NOW
+#stopgap
+function empty_electronic_anisotropy(;)
+        return zeros(Float64, 2)
 end
+
+
+# Creates a copy of the Vector of PairCouplings. This is useful when cloning a
+# system; mutable updates to one clone should not affect the other.
+function clone_interactions(int::ElectronicInteractions)
+    (; onsite, pair) = int
+    return ElectronicInteractions(onsite, copy(pair))
+end
+
+function set_hopping!(sys::ElectronicSystem, hopping, bond; ) 
+    is_homogeneous(sys) || error("Use `set_hopping_at!` for an inhomogeneous system.")
+    set_hopping_aux!(sys, hopping, bond)
+    return
+end
+
+function allapproxequal(a; kwargs...)
+    mean = sum(a; init=0.0) / length(a)
+    all(x -> isapprox(mean, x), a)
+end
+
+
+
+function transfer_interactions!(sys::ElectronicSystem, src::ElectronicSystem)
+    new_ints = interactions_homog(sys)
+
+    for new_i in 1:natoms(sys.crystal)
+        # Find `src` interaction either through an atom index or a site index
+        if is_homogeneous(src)
+            i = map_atom_to_other_crystal(sys.crystal, new_i, src.crystal)
+        else
+            i = map_atom_to_other_system(sys.crystal, new_i, src)
+        end
+        src_int = src.interactions_union[i]
+
+        # Copy onsite couplings
+        new_ints[new_i].onsite = src_int.onsite
+
+        # Copy pair couplings
+        new_pc = ElectronicPairCoupling[]
+        for pc in src_int.pair
+            new_bond = map_bond_to_other_crystal(src.crystal, pc.bond, sys.crystal, new_i)
+            push!(new_pc, ElectronicPairCoupling(new_bond, pc.hopping))
+        end
+        new_pc = sort!(new_pc, by=c->c.isculled)
+        new_ints[new_i].pair = new_pc
+    end
+end
+
+
+function set_hopping_aux!(sys::ElectronicSystem, hopping::Float64, bond::Bond)
+    # If `sys` has been reshaped, then operate first on `sys.origin`, which
+    # contains full symmetry information.
+    if !isnothing(sys.origin)
+        set_hopping_aux!(sys.origin, hopping, bond)
+        transfer_interactions!(sys, sys.origin)
+        return
+    end
+
+    # Simple checks on bond indices
+    validate_bond(sys.crystal, bond)
+
+    # Print a warning if an interaction already exists for bond
+    ints = interactions_homog(sys)
+    if any(x -> x.bond == bond, ints[bond.i].pair)
+        println("Overriding coupling for $bond.")
+    end
+
+  
+
+    # Propagate all couplings by symmetry
+    for i in 1:natoms(sys.crystal)
+        for bond′ in all_symmetry_related_bonds_for_atom(sys.crystal, i, bond)
+            replace_coupling!(ints[i].pair, ElectronicPairCoupling(bond′, hopping))
+        end
+    end
+end
+
+
+
+# Internal function only
+function replace_coupling!(list, coupling::ElectronicPairCoupling; accum=false)
+    (; bond) = coupling
+
+    # Find and remove existing couplings for this bond
+    idxs = findall(c -> c.bond == bond, list)
+    existing = list[idxs]
+    deleteat!(list, idxs)
+
+    # If the new coupling is exactly zero, and we're not accumulating, then
+    # return early
+    iszero(coupling.hopping) && !accum && return
+
+    # Optionally accumulate to an existing PairCoupling
+    if accum && !isempty(existing)
+        coupling += only(existing)
+    end
+
+    # Add to the list and sort by isculled. Sorting after each insertion will
+    # introduce quadratic scaling in length of `couplings`. If this becomes
+    # slow, we could swap two PairCouplings instead of performing a full sort.
+    push!(list, coupling)
+    sort!(list, by=c->c.isculled)
+
+    return
+end
+
+function resize_supercell(sys::ElectronicSystem, latsize::NTuple{3,Int}) 
+    return reshape_supercell(sys, diagm(collect(latsize)))
+end
+

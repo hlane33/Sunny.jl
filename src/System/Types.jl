@@ -75,7 +75,7 @@ struct ElectronicPairCoupling <: AbstractPairCoupling
     hopping   :: Float64              # Constant shift
 
 
-    function PairCoupling(bond, hopping)
+    function ElectronicPairCoupling(bond, hopping)
         return new(bond_parity(bond), bond, hopping)
     end
 end
@@ -86,6 +86,14 @@ mutable struct Interactions
     onsite :: OnsiteCoupling
     # Pair couplings for every bond that starts at the given atom
     pair :: Vector{PairCoupling}
+end
+
+mutable struct ElectronicInteractions
+    # Onsite coupling is either an N×N Hermitian matrix or possibly renormalized
+    # Stevens coefficients, depending on the mode :SUN or :dipole.
+    onsite :: Vector{Float64}
+    # Pair couplings for every bond that starts at the given atom
+    pair :: Vector{ElectronicPairCoupling}
 end
 
 mutable struct ModelParam
@@ -99,6 +107,7 @@ mutable struct ModelParam
         return new(label, val, onsites, pairs)
     end
 end
+
 
 const rFTPlan = FFTW.rFFTWPlan{Float64, -1, false, 5, UnitRange{Int64}}
 const rBFTPlan = FFTW.rFFTWPlan{ComplexF64, 1, false, 5, UnitRange{Int64}}
@@ -162,12 +171,12 @@ mutable struct ElectronicSystem
 
     # List of independent model parameters, each of which defines a group of
     # symmetry-allowed interactions. Empty for inhomogeneous systems.
-    params                 :: Vector{ModelParam}
-    active_labels          :: Vector{Symbol}            # Marked by with_params for autodiff
+    # params                 :: Vector{ElectronicModelParam}
+    # active_labels          :: Vector{Symbol}            # Marked by with_params for autodiff
 
     # Interactions may be homogeneous (defined for one unit cell), or
     # inhomogeneous (defined for every cell in the system).
-    interactions_union     :: Union{Vector{Interactions}, Array{Interactions, 4}}
+    interactions_union     :: Union{Vector{ElectronicInteractions}, Array{ElectronicInteractions, 4}}
 
     # Dynamical variables and buffers (dims × natoms)
     const extfield         :: Array{Vec3, 4}            # External B field
