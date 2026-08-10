@@ -42,8 +42,10 @@ const scalar_biquad_metric = Vec5(1/2, 2, 1/6, 2, 1/2)
 # HermitianC64 in :SUN mode, StevensExpansion in :dipole mode
 const OnsiteCoupling = Union{HermitianC64, StevensExpansion}
 
+abstract type AbstractPairCoupling end
+
 # Pair couplings are counted only once per bond
-struct PairCoupling
+struct PairCoupling <: AbstractPairCoupling
     isculled :: Bool # Bond directionality is used to avoid double counting
     bond     :: Bond
 
@@ -65,12 +67,22 @@ struct PairCoupling
     end
 end
 
-mutable struct Interactions
-    # Onsite coupling is either an N×N Hermitian matrix or possibly renormalized
-    # Stevens coefficients, depending on the mode :SUN or :dipole.
-    onsite :: OnsiteCoupling
-    # Pair couplings for every bond that starts at the given atom
-    pair :: Vector{PairCoupling}
+# Pair couplings are counted only once per bond
+struct ElectronicPairCoupling <: AbstractPairCoupling
+    isculled :: Bool # Bond directionality is used to avoid double counting
+    bond     :: Bond
+    
+    hopping   :: Float64              # Constant shift
+
+
+    function PairCoupling(bond, hopping)
+        return new(bond_parity(bond), bond, hopping)
+    end
+end
+
+mutable struct Interactions{P<:AbstractPairCoupling}
+    onsite::OnsiteCoupling
+    pair::Vector{P}
 end
 
 mutable struct ModelParam
