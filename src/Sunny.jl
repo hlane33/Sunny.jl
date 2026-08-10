@@ -67,7 +67,7 @@ include("System/PairExchange.jl")
 include("System/OnsiteCoupling.jl")
 include("System/Ewald.jl")
 include("System/Interactions.jl")
-export Moment, System, Site, clone_system, eachsite, nsites, position_to_site, global_positions,
+export ElectronicSystem, Moment, System, Site, clone_system, eachsite, nsites, position_to_site, global_positions,
     magnetic_moments, set_coherent!, set_dipole!, polarize_spins!, copy_spins!, randomize_spins!,
     set_spin_rescaling!, set_spin_s_at!, set_spin_rescaling_for_static_sum_rule!,
     energy, energy_per_site, spin_label, set_onsite_coupling!, set_pair_coupling!,
@@ -128,6 +128,8 @@ export SampledCorrelations, SampledCorrelationsStatic, add_sample!, clone_correl
 include("SCGA/NewtonBacktracking.jl")
 include("SCGA/SCGA.jl")
 export SCGA, magnetic_susceptibility_per_site
+
+include("RPA/RPA_aliasing.jl")
 
 include("EntangledUnits/TypesAndAliasing.jl")
 include("EntangledUnits/EntangledUnits.jl")

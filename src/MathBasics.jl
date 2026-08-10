@@ -1,4 +1,5 @@
 # Frequently used static types
+const Vec2 = SVector{2, Float64}
 const Vec3 = SVector{3, Float64}
 const Vec5 = SVector{5, Float64}
 const Mat3 = SMatrix{3, 3, Float64, 9}

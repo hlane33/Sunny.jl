@@ -80,9 +80,12 @@ struct ElectronicPairCoupling <: AbstractPairCoupling
     end
 end
 
-mutable struct Interactions{P<:AbstractPairCoupling}
-    onsite::OnsiteCoupling
-    pair::Vector{P}
+mutable struct Interactions
+    # Onsite coupling is either an N×N Hermitian matrix or possibly renormalized
+    # Stevens coefficients, depending on the mode :SUN or :dipole.
+    onsite :: OnsiteCoupling
+    # Pair couplings for every bond that starts at the given atom
+    pair :: Vector{PairCoupling}
 end
 
 mutable struct ModelParam
@@ -115,7 +118,7 @@ struct Ewald
     ift_plan :: rIFTPlan
 end
 
-mutable struct System{N}
+mutable struct System{N} 
     const origin           :: Union{Nothing, System{N}} # System for the original chemical cell
     const mode             :: Symbol                    # :SUN, :dipole, or :dipole_uncorrected
 
@@ -146,6 +149,30 @@ mutable struct System{N}
     const coherents        :: Array{CVec{N}, 4}         # Coherent states
     const dipole_buffers   :: Vector{Array{Vec3, 4}}    # Buffers for dynamics routines
     const coherent_buffers :: Vector{Array{CVec{N}, 4}} # Buffers for dynamics routines
+
+    # Global data
+    const rng              :: Random.Xoshiro
+end
+
+mutable struct ElectronicSystem
+    const origin           :: Union{Nothing, ElectronicSystem} # System for the original chemical cell
+
+    const crystal          :: Crystal
+    const dims             :: NTuple{3, Int}            # Dimensions of lattice in unit cells
+
+    # List of independent model parameters, each of which defines a group of
+    # symmetry-allowed interactions. Empty for inhomogeneous systems.
+    params                 :: Vector{ModelParam}
+    active_labels          :: Vector{Symbol}            # Marked by with_params for autodiff
+
+    # Interactions may be homogeneous (defined for one unit cell), or
+    # inhomogeneous (defined for every cell in the system).
+    interactions_union     :: Union{Vector{Interactions}, Array{Interactions, 4}}
+
+    # Dynamical variables and buffers (dims × natoms)
+    const extfield         :: Array{Vec3, 4}            # External B field
+    const mean_fields          :: Array{Vec2, 4}            # Expected dipoles
+    const mean_field_buffers :: Vector{Array{Vec2, 4}} # Buffers for dynamics routines
 
     # Global data
     const rng              :: Random.Xoshiro

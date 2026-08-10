@@ -74,7 +74,7 @@ function reshape_supercell(esys::EntangledSystem, shape)
     return EntangledSystem(sys_new, sys_origin_new, contraction_info, observables, source_idcs)
 end
 
-function repeat_periodically(esys, counts)
+function repeat_periodically(esys::EntangledSystem, counts)
     (; sys, sys_origin, contraction_info) = esys
 
     # Repeat both entangled and original system periodically
