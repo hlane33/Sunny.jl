@@ -9,7 +9,7 @@ end
 
 
 # create wrapper that will become self consistency function but just to test
-function self_consistent_aux(sys,ne;regularization=1e-12, nEs = 100, tol=1e-2, mu_bounds = nothing,dq = 0.1,Γ=0.1,kT,Niters=100,α=0.1)
+function self_consistent_aux(sys,ne;regularization=1e-12, tol=1e-2, mu_bounds = nothing,dq = 0.1,kT,Niters=100,α=0.1)
     
     ########## THIS IS NEEDED TO SET UP INTERACTIONS
     # Create a single enlarged chemical cell that matches the full system size
@@ -32,13 +32,11 @@ function self_consistent_aux(sys,ne;regularization=1e-12, nEs = 100, tol=1e-2, m
     Hdown = zeros(ComplexF64,Na,Na)
     
     # initialize arrays for chemical potential loop
-    dos_array = zeros(Float64,nEs)
     Evals_up = zeros(Float64,Na,Nqs)
     Evals_down = zeros(Float64,Na,Nqs)
     Evecs_up = zeros(ComplexF64,Na,Na,Nqs)
     Evecs_down = zeros(ComplexF64,Na,Na,Nqs)
-    E_ϵ =  get_bound_from_tol(tol,Γ) #some way to get bounds on the energy arrays (improve so that tol is meaningful everywhere)
-    
+
     for ii in 1:Niters
         ###########################################
         mean_fields_new = zero(mean_fields)
@@ -56,27 +54,17 @@ function self_consistent_aux(sys,ne;regularization=1e-12, nEs = 100, tol=1e-2, m
             Evecs_down[:,:,qi] .= Edvecs
         end 
 
-        #build the energy grid
-        Elims = extrema(hcat(Evals_up,Evals_down)) .+ (-E_ϵ,E_ϵ)
-        energies = range(Elims[1],Elims[2];length=nEs)
-        dE = step(energies)
-
-        dos_array .= 0.0
-        for (Ei,E) in enumerate(energies)
+        Elims = extrema(hcat(Evals_up,Evals_down)) .+ (-3,3)
+        function ne_calc(μ)
+            out = 0.0
             for qi in 1:Nqs
                 for m in 1:Na
-                    dos_array[Ei] += lor(E-Evals_up[m,qi],Γ)
+                    out +=fermi.(Evals_up[m,qi], μ, kT) + fermi.(Evals_down[m,qi], μ, kT)
                 end
-                for m in 1:Na
-                    dos_array[Ei] += lor(E-Evals_down[m,qi],Γ)
-                end  
             end
+            return out / Nqs
         end
-        dos_array /= Nqs
-        function density(μ)
-            return (sum(dos_array .* fermi.(energies, μ, kT)) * dE)
-        end
-        loss(μ) = (density(μ) - ne)^2
+        loss(μ) = (ne_calc(μ) - ne)^2
 
         new_mu_bounds = isnothing(mu_bounds) ? Elims : mu_bounds
         res = Optim.optimize(loss, new_mu_bounds[1], new_mu_bounds[2], Optim.Brent();rel_tol = tol)
@@ -104,8 +92,12 @@ function self_consistent_aux(sys,ne;regularization=1e-12, nEs = 100, tol=1e-2, m
     println("not converged after $Niters iterations!")
 end
 
-function mean_field_self_consistency!(sys::ElectronicSystem,ne;regularization=1e-12, nEs = 100, tol=1e-2, mu_bounds = nothing,dq = 0.1,Γ=0.1,kT,Niters=100,α=0.1)
-    mean_fields_new, μ = self_consistent_aux(sys,ne;regularization, nEs , tol, mu_bounds ,dq ,Γ,kT,Niters,α)
+
+
+
+function mean_field_self_consistency!(sys::ElectronicSystem,ne;regularization=1e-12, tol=1e-2, mu_bounds = nothing,dq = 0.1,kT,Niters=100,α=0.1)
+    # mean_fields_new, μ = self_consistent_aux(sys,ne;regularization, nEs , tol, mu_bounds ,dq ,Γ,kT,Niters,α)
+    mean_fields_new, μ = self_consistent_aux_v2(sys,ne;regularization , tol, mu_bounds ,dq ,kT,Niters,α)
     for m in 1:length(mean_fields_new)
         sys.mean_fields[m] = mean_fields_new[m]
     end
