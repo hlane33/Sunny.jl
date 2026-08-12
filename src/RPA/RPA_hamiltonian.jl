@@ -97,7 +97,7 @@ end
 
 function mean_field_self_consistency!(sys::ElectronicSystem,ne;regularization=1e-12, tol=1e-2, mu_bounds = nothing,dq = 0.1,kT,Niters=100,α=0.1)
     # mean_fields_new, μ = self_consistent_aux(sys,ne;regularization, nEs , tol, mu_bounds ,dq ,Γ,kT,Niters,α)
-    mean_fields_new, μ = self_consistent_aux_v2(sys,ne;regularization , tol, mu_bounds ,dq ,kT,Niters,α)
+    mean_fields_new, μ = self_consistent_aux(sys,ne;regularization , tol, mu_bounds ,dq ,kT,Niters,α)
     for m in 1:length(mean_fields_new)
         sys.mean_fields[m] = mean_fields_new[m]
     end
