@@ -170,19 +170,16 @@ mutable struct ElectronicSystem
     const crystal          :: Crystal
     const dims             :: NTuple{3, Int}            # Dimensions of lattice in unit cells
 
-    # List of independent model parameters, each of which defines a group of
-    # symmetry-allowed interactions. Empty for inhomogeneous systems.
-    # params                 :: Vector{ElectronicModelParam}
-    # active_labels          :: Vector{Symbol}            # Marked by with_params for autodiff
-
     # Interactions may be homogeneous (defined for one unit cell), or
     # inhomogeneous (defined for every cell in the system).
     interactions_union     :: Union{Vector{ElectronicInteractions}, Array{ElectronicInteractions, 4}}
 
+    const chemical_potential    :: Float64
+    const ne                    :: Float64
+
     # Dynamical variables and buffers (dims × natoms)
     const extfield         :: Array{Vec3, 4}            # External B field
     const mean_fields          :: Array{Vec2, 4}            # Expected dipoles
-    const mean_field_buffers :: Vector{Array{Vec2, 4}} # Buffers for dynamics routines
 
     # Global data
     const rng              :: Random.Xoshiro

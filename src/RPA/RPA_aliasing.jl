@@ -276,6 +276,7 @@ function RPA(sys::ElectronicSystem; measure::Union{Nothing, MeasureSpec}, regula
     return RPA(sys, measure, regularization)
 end
 
+
 function all_dipole_observables(sys::ElectronicSystem; )
     observables = zeros(Vec3, 3, size(eachsite(sys))...)
     for site in eachsite(sys)
@@ -383,3 +384,26 @@ function to_standard_rlu(sys::ElectronicSystem, q_reshaped)
     return orig_crystal(sys).recipvecs \ (sys.crystal.recipvecs * q_reshaped)
 end
 
+
+mutable struct MeanFieldTheory 
+    sys            :: ElectronicSystem
+    ne             :: Float64
+    μ              :: Float64
+    mean_fields    :: Array{Vec2, 4}
+    regularization :: Float64
+end
+
+function MeanFieldTheory(sys::ElectronicSystem, ne::Float64, μ::Float64;  regularization=1e-8)
+
+    # Create a single enlarged chemical cell that matches the full system size
+    # while preserving the system's linear site order.
+    new_cryst = resize_and_flatten_crystal(sys.crystal, sys.dims)
+
+    # Create a new system with dims (1,1,1). A clone happens in all cases.
+    sys = reshape_supercell_aux(sys, new_cryst, (1,1,1))
+    na = natoms(sys.crystal)
+    mean_fields = fill(zero(Vec2), 1, 1, 1, na)
+
+    # TODO Add options for the self consistency
+    return MeanFieldTheory(sys, ne, μ, mean_fields, regularization)
+end
