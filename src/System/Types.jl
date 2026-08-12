@@ -174,9 +174,6 @@ mutable struct ElectronicSystem
     # inhomogeneous (defined for every cell in the system).
     interactions_union     :: Union{Vector{ElectronicInteractions}, Array{ElectronicInteractions, 4}}
 
-    const chemical_potential    :: Float64
-    const ne                    :: Float64
-
     # Dynamical variables and buffers (dims × natoms)
     const extfield         :: Array{Vec3, 4}            # External B field
     const mean_fields          :: Array{Vec2, 4}            # Expected dipoles

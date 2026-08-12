@@ -9,12 +9,9 @@ function clone_system(sys::ElectronicSystem)
     # (Vector) or inhomogeneous interactions (4D Array)
     interactions_clone = map(clone_interactions, interactions_union)
 
-    # Empty buffers are required for thread safety.
-    empty_mean_field_buffers = Array{Vec2, 4}[]
-
     ret = ElectronicSystem(origin_clone, crystal, dims,
                   interactions_clone, copy(extfield),
-                 copy(mean_fields), empty_mean_field_buffers
+                 copy(mean_fields)
                  , copy(rng))
 
     return ret
@@ -151,7 +148,6 @@ function reshape_supercell_aux(sys::ElectronicSystem, new_cryst::Crystal, new_di
     new_ints             = empty_interactions(new_na)
     new_extfield         = zeros(Vec3, new_dims..., new_na)
     new_mean_fields          = zeros(Vec2, new_dims..., new_na)
-    new_mean_field_buffers   = Array{Vec2, 4}[]
 
     # The `origin` system always has dims=(1, 1, 1) and uses the original
     # crystal. Perform a clone because mutable updates to interactions in the
@@ -160,7 +156,7 @@ function reshape_supercell_aux(sys::ElectronicSystem, new_cryst::Crystal, new_di
 
     new_sys = ElectronicSystem(orig_sys, new_cryst, new_dims,
                     new_ints, new_extfield,
-                     new_mean_fields, new_mean_field_buffers, 
+                     new_mean_fields, 
                      copy(sys.rng))
 
     transfer_interactions!(new_sys, sys)

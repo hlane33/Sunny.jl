@@ -92,11 +92,8 @@ function System(crystal::Crystal, moments::Vector{Pair{Int, Moment}}, mode::Symb
     return dims == (1, 1, 1) ? ret : repeat_periodically(ret, dims)
 end
 
-function ElectronicSystem(crystal::Crystal, chemical_potential, ne;
-                dims::NTuple{3,Int}=(1, 1, 1), seed=nothing, units=nothing) 
-    if !isnothing(units)
-        @warn "units argument to System is deprecated and will be ignored!"
-    end
+function ElectronicSystem(crystal::Crystal;
+                dims::NTuple{3,Int}=(1, 1, 1), seed=nothing) 
 
     # Symops must be non-empty
     validate_symops(crystal)
@@ -114,7 +111,7 @@ function ElectronicSystem(crystal::Crystal, chemical_potential, ne;
     rng = isnothing(seed) ? Random.Xoshiro(rand(UInt64, 4)...) : Random.Xoshiro(seed)
 
     ret = ElectronicSystem(nothing, crystal, (1, 1, 1),
-                 interactions, chemical_potential, ne, extfield, mean_fields, rng)
+                 interactions, extfield, mean_fields, rng)
     return dims == (1, 1, 1) ? ret : repeat_periodically(ret, dims)
 end
 
