@@ -87,7 +87,7 @@ function self_consistent_aux(sys,ne;regularization=1e-12, tol=1e-2, mu_bounds = 
             return mean_fields_new, μ #; break
         end
         println("step $ii/$Niters: μ = $μ, diff: $diff")
-        mean_fields = (1-α).*mean_fields .+ α.*mean_fields_new
+        mean_fields = α.*mean_fields .+ (1-α).*mean_fields_new
     end
     println("not converged after $Niters iterations!")
 end
@@ -134,7 +134,6 @@ function mean_field_hamiltonians!(Hup,Hdown,ints,mean_fields,q_reshaped::Vec3;re
 
             phase = exp(2π*im * dot(q_reshaped, bond.n)) # Phase associated with periodic wrapping
 
-            # Bilinear exchange
             if !iszero(coupling.hopping)
                 t = coupling.hopping 
                 Hup[i, j] += -t * phase
